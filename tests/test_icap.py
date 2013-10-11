@@ -1,6 +1,6 @@
 import pytest
 
-from icap import ChunkedMessage, ICAPRequest, HeadersDict
+from icap import ChunkedMessage, ICAPRequest, HeadersDict, RequestLine, StatusLine
 
 def data_string(req_line, path):
     parts = req_line, open('data/' + path).read()
@@ -148,6 +148,30 @@ def test_icap_parsing_stupid(test_file, expected_values):
     else:
         assert_bodies_match(m, [])
 
+    assert_stream_consumed(m)
+
+
+@pytest.mark.parametrize(('input_bytes', 'expected_request'), [
+    ('GET / HTTP/1.1\r\n\r\n', True),
+    ('HTTP/1.1 200 OK\r\n\r\n', False),
+    ('RESPMOD / ICAP/1.1\r\n\r\n', True),
+    ('ICAP/1.1 200 OK\r\n\r\n', False),
+])
+def test_sline_matching(input_bytes, expected_request):
+    m = ChunkedMessage.from_bytes(input_bytes)
+
+    assert m.headers_complete()
+
+    if expected_request:
+        m.request_line
+        assert m.is_request
+        assert not m.is_response
+        assert isinstance(m.request_line, RequestLine)
+    else:
+        m.status_line
+        assert m.is_response
+        assert not m.is_request
+        assert isinstance(m.status_line, StatusLine)
     assert_stream_consumed(m)
 
 

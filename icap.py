@@ -68,7 +68,7 @@ class HeadersDict(OrderedDict):
 
 class ChunkedMessage(object):
     def __init__(self):
-        self.status_line = ''
+        self.sline = None
         self.headers = HeadersDict()
         self.state = ParseState.empty
 
@@ -179,6 +179,38 @@ class ChunkedMessage(object):
     def is_request(self):
         return isinstance(self.sline, RequestLine)
 
+    @cached_property
+    def is_response(self):
+        return not self.is_request
+
+    @cached_property
+    def request_line(self):
+        '''Request line of the HTTP/ICAP request object, e.g. 'GET / HTTP/1.1'
+
+        This is a convenience attribute that points at `self.sline`.
+
+        Will raise AttributeError if the request object is not a request.
+        '''
+
+        if self.is_request:
+            return self.sline
+        raise AttributeError("%r object has no attribute 'request_line'"
+                             % (self.__class__.__name__))
+
+    @cached_property
+    def status_line(self):
+        '''Request line of the HTTP/ICAP request object, e.g. 'HTTP/1.1 200 OK'
+
+        This is a convenience attribute that points at `self.sline`.
+
+        Will raise AttributeError if the request object is not a response.
+        '''
+
+        if self.is_response:
+            return self.sline
+        raise AttributeError("%r object has no attribute 'status_line'"
+                             % (self.__class__.__name__))
+
 
 class ICAPRequest(ChunkedMessage):
     @classmethod
@@ -248,7 +280,11 @@ class ICAPRequest(ChunkedMessage):
 
     @cached_property
     def is_respmod(self):
-        return self.is_request and not self.is_reqmod
+        return self.is_request and self.sline.method == 'RESPMOD'
+
+    @cached_property
+    def is_options(self):
+        return self.is_request and self.sline.method == 'OPTIONS'
 
 
 def convert_offsets_to_sizes(fields):
