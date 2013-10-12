@@ -15,3 +15,8 @@ class InvalidEncapsulatedHeadersError(Exception):
         message = ("Encapsulated field does not comply with RFC3507: %s"
                    % raw_field)
         super(InvalidEncapsulatedHeadersError, self).__init__(message)
+
+
+class MalformedRequestError(Exception):
+    """Represents an invalid request/status line."""
+    pass

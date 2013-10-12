@@ -1,6 +1,7 @@
 import pytest
 
 from icap import ChunkedMessage, ICAPRequest, HeadersDict, RequestLine, StatusLine
+from icap.errors import MalformedRequestError
 
 def data_string(req_line, path):
     parts = req_line, open('data/' + path).read()
@@ -174,6 +175,27 @@ def test_sline_matching(input_bytes, expected_request):
         assert isinstance(m.status_line, StatusLine)
     assert_stream_consumed(m)
 
+
+def test_short_read_headers():
+    input_bytes = 'GET / HTTP/1.1\r\nHea'
+    m = ChunkedMessage.from_bytes(input_bytes)
+    assert m is None
+
+
+@pytest.mark.parametrize(('input_bytes'), [
+    'GET / \r\n',
+    'HTTP/1.1 200 \r\n',
+    'HTTP/1.1 20g0 OK\r\n',
+    'RESPMOD / \r\n',
+    'ICAP/1.1 OK\r\n\r\n',
+])
+def test_malformed_request_line(input_bytes):
+    try:
+        ChunkedMessage.from_bytes(input_bytes)
+    except MalformedRequestError:
+        pass
+    else:
+        assert False, "Request is malformed, exception not raised."
 
 def test_HeadersDict():
     h = HeadersDict()

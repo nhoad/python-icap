@@ -3,6 +3,7 @@ from collections import namedtuple, OrderedDict
 
 from werkzeug import cached_property
 
+from .errors import MalformedRequestError
 from .utils import parse_encapsulated_field, convert_offsets_to_sizes
 
 # who could resist a class name like this?
@@ -132,6 +133,11 @@ class ChunkedMessage(object):
         complete = message.headers_complete
         while not complete():
             line = stream.readline()
+
+            # Handle a short read, assume the connection was lost.
+            # FIXME: non-crlf-endings
+            if not line.endswith('\r\n'):
+                return None
             message._feed_line(line)
 
         assert message.headers_complete()
@@ -154,7 +160,7 @@ class ChunkedMessage(object):
         self.sline = parse_start_line(sline.strip())
 
     def handle_header(self, header):
-        # FIXME: non-clrf-endings
+        # FIXME: non-crlf-endings
         if not header.replace('\r\n', ''):
             self.headers_complete(True)
             return
@@ -215,6 +221,10 @@ class ICAPRequest(ChunkedMessage):
     @classmethod
     def from_stream(cls, stream, **kwargs):
         self = super(ICAPRequest, cls).from_stream(stream, **kwargs)
+
+        # handle a short read.
+        if self is None:
+            return self
 
         assert self.headers_complete()
 
@@ -287,10 +297,21 @@ class ICAPRequest(ChunkedMessage):
 
 
 def parse_start_line(sline):
-    method, uri, version = parts = sline.split(' ', 2)
+    """Parse the first line from an HTTP/ICAP message and return an instance of
+    StatusLine or RequestLine.
+
+    Will raise MalformedRequestError if there was an error during parsing.
+    """
+    try:
+        method, uri, version = parts = sline.split(' ', 2)
+    except ValueError:
+        raise MalformedRequestError
 
     if method.upper().startswith(('HTTP', 'ICAP')):
         version, code, reason = parts
-        return StatusLine(version.upper(), int(code), reason)
+        try:
+            return StatusLine(version.upper(), int(code), reason)
+        except ValueError:
+            raise MalformedRequestError
     else:
         return RequestLine(method.upper(), uri, version.upper())
