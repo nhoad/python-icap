@@ -1,7 +1,7 @@
 import pytest
 
-from icap import ChunkedMessage, ICAPRequest, HeadersDict, RequestLine, StatusLine
-from icap.errors import MalformedRequestError, InvalidEncapsulatedHeadersError
+from icap import ChunkedMessage, ICAPRequest, ICAPResponse, HeadersDict, RequestLine, StatusLine
+from icap.errors import MalformedRequestError, InvalidEncapsulatedHeadersError, ICAPAbort
 
 def data_string(req_line, path):
     parts = req_line, open('data/' + path).read()
@@ -256,3 +256,25 @@ def test_HeadersDict():
     assert a == b
     assert a != c
     assert c != d
+
+    assert str(a) == '\r\n'.join(['Foo: bar']*6) + '\r\n'
+    assert str(c) == 'lamp: i love lamp\r\n'
+    assert str(d) == 'lamp: i dont love lamp\r\n'
+    assert str(HeadersDict()) == ''
+
+
+class TestICAPResponse(object):
+    def test_from_error(self):
+        s = ICAPResponse.from_error(ICAPAbort(200))
+        assert str(s) == 'ICAP/1.0 200 OK\r\n'
+
+        s = ICAPResponse.from_error(ICAPAbort(204))
+        assert str(s) == 'ICAP/1.0 204 No modifications needed\r\n'
+
+        headers = HeadersDict([
+            ('header', 'value'),
+        ])
+
+        s = ICAPResponse.from_error(ICAPAbort(204))
+        s.headers = headers
+        assert str(s) == 'ICAP/1.0 204 No modifications needed\r\nheader: value\r\n'

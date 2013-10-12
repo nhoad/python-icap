@@ -3,7 +3,7 @@ from collections import namedtuple, OrderedDict
 
 from werkzeug import cached_property
 
-from .errors import MalformedRequestError, InvalidEncapsulatedHeadersError
+from .errors import MalformedRequestError, InvalidEncapsulatedHeadersError, response_codes
 from .utils import parse_encapsulated_field, convert_offsets_to_sizes
 
 # who could resist a class name like this?
@@ -64,6 +64,17 @@ class HeadersDict(OrderedDict):
                 return False
 
         return True
+
+    def __str__(self):
+        if not self:
+            return ''
+
+        s = '\r\n'.join(
+            ': '.join(v) for k in self
+            for v in OrderedDict.__getitem__(self, k)
+        ) + '\r\n'
+
+        return s
 
 
 class ChunkedMessage(object):
@@ -306,6 +317,23 @@ class ICAPRequest(ChunkedMessage):
     @cached_property
     def is_options(self):
         return self.is_request and self.sline.method == 'OPTIONS'
+
+
+class ICAPResponse(object):
+    def __init__(self, status_line=None, headers=None, encapsulated=None):
+        self.status_line = status_line or StatusLine('ICAP/1.0', 200, 'OK')
+        self.encapsulated = encapsulated or ChunkedMessage()
+        self.headers = headers or HeadersDict()
+
+    def __str__(self):
+        return '\r\n'.join([' '.join(map(str, self.status_line)), str(self.headers)])
+
+    @classmethod
+    def from_error(cls, error):
+        status_code = error.status_code
+        message = response_codes[status_code]
+        self = cls(StatusLine('ICAP/1.0', status_code, message))
+        return self
 
 
 def parse_start_line(sline):

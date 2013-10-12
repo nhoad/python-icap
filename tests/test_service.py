@@ -5,7 +5,7 @@ from mock import MagicMock
 from icap import RegexService, DomainService, BaseService
 
 
-class FakeRequest:
+class FakeRequest(object):
     def __init__(self, url):
         self.session = {
             'url': urlparse.urlparse(url),
@@ -16,7 +16,7 @@ class DummyService(BaseService):
     pass
 
 
-class TestDomainService():
+class TestDomainService(object):
     def test_normal_domain(self):
         r = DomainService('google.com')
 
