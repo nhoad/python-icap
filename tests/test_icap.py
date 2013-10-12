@@ -1,7 +1,7 @@
 import pytest
 
 from icap import ChunkedMessage, ICAPRequest, HeadersDict, RequestLine, StatusLine
-from icap.errors import MalformedRequestError
+from icap.errors import MalformedRequestError, InvalidEncapsulatedHeadersError
 
 def data_string(req_line, path):
     parts = req_line, open('data/' + path).read()
@@ -174,6 +174,24 @@ def test_sline_matching(input_bytes, expected_request):
         assert not m.is_request
         assert isinstance(m.status_line, StatusLine)
     assert_stream_consumed(m)
+
+
+@pytest.mark.parametrize(('input_bytes', 'expected_fail'), [
+    ('RESPMOD / ICAP/1.1\r\nEncapsulated: null-body=0\r\n\r\n', False),
+    ('REQMOD / ICAP/1.1\r\nEncapsulated: null-body=0\r\n\r\n', False),
+    ('OPTIONS / ICAP/1.1\r\nEncapsulated: null-body=0\r\n\r\n', False),
+    ('OPTIONS / ICAP/1.1\r\n\r\n', False),
+])
+def test_encapsulated_header_requirement(input_bytes, expected_fail):
+    m = ICAPRequest.from_bytes(input_bytes)
+    try:
+        m.encapsulated_header
+    except InvalidEncapsulatedHeadersError:
+        if not expected_fail:
+            raise
+    else:
+        if expected_fail:
+            assert False, "Did not raise an error"
 
 
 def test_short_read_headers():

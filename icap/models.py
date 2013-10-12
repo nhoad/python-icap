@@ -3,7 +3,7 @@ from collections import namedtuple, OrderedDict
 
 from werkzeug import cached_property
 
-from .errors import MalformedRequestError
+from .errors import MalformedRequestError, InvalidEncapsulatedHeadersError
 from .utils import parse_encapsulated_field, convert_offsets_to_sizes
 
 # who could resist a class name like this?
@@ -253,6 +253,11 @@ class ICAPRequest(ChunkedMessage):
             # ChunkedMessage parsing.
             m = ChunkedMessage.from_stream(self.stream)
 
+        if self.is_options and set(parts.keys()) == {'null-body'}:
+            assert m is None
+            # TODO: is this the right thing to do?
+            m = ChunkedMessage()
+
         self.encapsulated_message = m
 
         if self.is_respmod:
@@ -274,8 +279,15 @@ class ICAPRequest(ChunkedMessage):
 
     @cached_property
     def encapsulated_header(self):
-        # this MUST throw a key error. It's a required header.
-        e = self.headers['encapsulated']
+        try:
+            e = self.headers['encapsulated']
+        except KeyError:
+            if self.is_request and self.is_options:
+                e = 'null-body=0'
+            else:
+                raise InvalidEncapsulatedHeadersError(
+                    '%s object is missing encapsulated header' %
+                    (self.__class__.__name__))
         parsed = parse_encapsulated_field(e)
         return parsed
 
