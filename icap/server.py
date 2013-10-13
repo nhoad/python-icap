@@ -57,10 +57,10 @@ class Server(object):
                 try:
                     response = self.handle_request(request)
                 except ICAPAbort as e:
-                    if e.status_code == 204 and request.allow_204:
-                        response = ICAPResponse.from_error(e)
-                    else:
+                    if e.status_code == 204 and not request.allow_204:
                         response = ICAPResponse.from_request(request)
+                    else:
+                        response = ICAPResponse.from_error(e)
                 else:
                     response = ICAPResponse(http=response)
 
@@ -97,7 +97,13 @@ class Server(object):
         if service is None:
             abort(204)
 
-        response = service.handle(request)
+        try:
+            response = service.handle(request)
+        except (SystemExit, KeyboardInterrupt) as e:
+            raise
+        except BaseException as e:
+            # FIXME: communicating this exception in some way would be nice.
+            abort(500)
 
         if response is None:
             return request.http

@@ -31,8 +31,26 @@ class TestServer(object):
     def test_handle_conn__response_for_respmod(self):
         assert False, "should test handler that returns a response"
 
-    def test_handle_conn__handles_exceptions(self):
-        assert False, "should raise a heap of different exceptions, to make sure they're handled."
+    @pytest.mark.parametrize('exception', [
+        ValueError,
+        StandardError,
+        Exception,
+        BaseException,
+    ])
+    def test_handle_conn__handles_exceptions(self, exception):
+        input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
+
+        service = DomainService('www.origin-server.com')
+
+        @service.handler
+        def respmod(request):
+            raise exception
+
+        server = Server(services=[service])
+
+        transaction = self.run_test(server, input_bytes)
+
+        assert '500 Server error' in transaction
 
     @pytest.mark.parametrize(('input_bytes', 'expected_message'), [
         ('OPTIONS / HTTP/1.0\r\n\r\n', '400 Bad request'),  # HTTP is a no-no
