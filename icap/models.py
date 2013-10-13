@@ -1,15 +1,18 @@
+import urlparse
+
 from cStringIO import StringIO
 from collections import namedtuple, OrderedDict
 
 from werkzeug import cached_property
 
 from .errors import MalformedRequestError, InvalidEncapsulatedHeadersError, response_codes
-from .utils import parse_encapsulated_field, convert_offsets_to_sizes
+from .utils import (dump_encapsulated_field, parse_encapsulated_field,
+                    convert_offsets_to_sizes)
 
 # who could resist a class name like this?
-BodyPart = namedtuple('BodyPart', ['content', 'header'])
+BodyPart = namedtuple('BodyPart', 'content header')
 RequestLine = namedtuple('RequestLine', 'method uri version')
-StatusLine = namedtuple('RequestLine', 'version code reason')
+StatusLine = namedtuple('StatusLine', 'version code reason')
 
 
 class ParseState(object):
@@ -82,6 +85,7 @@ class ChunkedMessage(object):
         self.sline = None
         self.headers = HeadersDict()
         self.state = ParseState.empty
+        self.chunks = []
 
     def started(self, set=False):
         if set:
@@ -98,9 +102,11 @@ class ChunkedMessage(object):
             self.state = ParseState.body_ended
         return self.state == ParseState.body_ended
 
+    def __str__(self):
+        return '\r\n'.join([' '.join(map(str, self.sline)), str(self.headers)])
+
     def __iter__(self):
-        store_chunks = self.store_chunks
-        chunks = self._chunks
+        chunks = self.chunks
 
         if self.complete():
             for chunk in chunks:
@@ -122,8 +128,7 @@ class ChunkedMessage(object):
                 data = self.stream.read(size+2)  # +2 for CRLF
                 # FIXME: non-crlf-endings
                 chunk = BodyPart(data[:-2], header)
-                if store_chunks:
-                    chunks.append(chunk)
+                chunks.append(chunk)
                 yield chunk
             else:
                 self.complete(True)
@@ -131,15 +136,8 @@ class ChunkedMessage(object):
                 self.stream.readline()
 
     @classmethod
-    def from_kwargs(cls, store_chunks=False):
+    def from_stream(cls, stream):
         message = cls()
-        message.store_chunks = store_chunks
-        message._chunks = []
-        return message
-
-    @classmethod
-    def from_stream(cls, stream, **kwargs):
-        message = cls.from_kwargs(**kwargs)
 
         complete = message.headers_complete
         while not complete():
@@ -157,8 +155,13 @@ class ChunkedMessage(object):
         return message
 
     @classmethod
-    def from_bytes(cls, bytes, **kwargs):
-        return cls.from_stream(StringIO(bytes), **kwargs)
+    def from_bytes(cls, bytes):
+        return cls.from_stream(StringIO(bytes))
+
+    def set_payload(self, payload):
+        for chunk in self:
+            pass
+        self.chunks = [BodyPart(payload, '')]
 
     def _feed_line(self, line):
         if not self.started():
@@ -230,8 +233,8 @@ class ChunkedMessage(object):
 
 class ICAPRequest(ChunkedMessage):
     @classmethod
-    def from_stream(cls, stream, **kwargs):
-        self = super(ICAPRequest, cls).from_stream(stream, **kwargs)
+    def from_stream(cls, stream):
+        self = super(ICAPRequest, cls).from_stream(stream)
 
         # handle a short read.
         if self is None:
@@ -255,7 +258,7 @@ class ICAPRequest(ChunkedMessage):
                            (self.is_respmod and 'res-hdr' not in parts))
 
         if missing_headers:
-            m = ChunkedMessage.from_kwargs(store_chunks=not self.allow_204)
+            m = ChunkedMessage()
             m.headers_complete(True)
             m.stream = self.stream
         else:
@@ -269,10 +272,10 @@ class ICAPRequest(ChunkedMessage):
             # TODO: is this the right thing to do?
             m = ChunkedMessage()
 
-        self.encapsulated_message = m
+        self.http = m
 
         if self.is_respmod:
-            m.request_sline = req_sline
+            m.request_line = req_sline
             m.request_headers = req_headers
 
         if 'null-body' in parts:
@@ -281,12 +284,8 @@ class ICAPRequest(ChunkedMessage):
         return self
 
     def __iter__(self):
-        for chunk in self.encapsulated_message:
+        for chunk in self.http:
             yield chunk
-
-    @classmethod
-    def from_kwargs(cls, **kwargs):
-        return cls()
 
     @cached_property
     def encapsulated_header(self):
@@ -320,9 +319,9 @@ class ICAPRequest(ChunkedMessage):
 
 
 class ICAPResponse(object):
-    def __init__(self, status_line=None, headers=None, encapsulated=None):
+    def __init__(self, status_line=None, headers=None, http=None):
         self.status_line = status_line or StatusLine('ICAP/1.0', 200, 'OK')
-        self.encapsulated = encapsulated or ChunkedMessage()
+        self.http = http or ChunkedMessage()
         self.headers = headers or HeadersDict()
 
     def __str__(self):
@@ -334,6 +333,66 @@ class ICAPResponse(object):
         message = response_codes[status_code]
         self = cls(StatusLine('ICAP/1.0', status_code, message))
         return self
+
+    @classmethod
+    def from_request(cls, request, error=None):
+        if error is None:
+            status_line = StatusLine('ICAP/1.0', 200, 'OK')
+            self = cls(status_line, http=request.http)
+        else:
+            self = cls.from_error(error)
+
+        return self
+
+    def serialize_to_stream(self, stream):
+        # FIXME: need to serialize OPTIONS requests too.
+
+        if self.status_line.code != 200:
+            stream.write(str(self))
+            return
+
+        http_preamble = self.set_encapsulated_header()
+        stream.write(str(self))
+        stream.write('\r\n')
+        stream.write(http_preamble)
+
+        self.write_chunks(stream, self.http.chunks)
+
+    def write_chunks(self, stream, chunks):
+        for chunk in self.http.chunks:
+            s = chunk.content
+            n = hex(len(s))[2:]  # strip off leading 0x
+
+            if chunk.header.strip() == 'ieof':
+                header = '%s; %s' % (n, chunk.header)
+            else:
+                header = n
+
+            stream.write(header+'\r\n')
+            stream.write(s)
+            stream.write('\r\n')
+
+        stream.write('0\r\n')
+
+    def set_encapsulated_header(self):
+        http = self.http
+        http_preamble = str(http) + '\r\n'
+
+        if http.is_request:
+            encapsulated = OrderedDict([('req-hdr', 0)])
+            body_key = 'req-body'
+        elif http.is_response:
+            encapsulated = OrderedDict([('res-hdr', 0)])
+            body_key = 'res-body'
+
+        if not http.chunks:
+            body_key = 'null-body'
+
+        encapsulated[body_key] = len(http_preamble)
+
+        self.headers['Encapsulated'] = dump_encapsulated_field(encapsulated)
+
+        return http_preamble
 
 
 def parse_start_line(sline):
@@ -355,3 +414,39 @@ def parse_start_line(sline):
             raise MalformedRequestError
     else:
         return RequestLine(method.upper(), uri, version.upper())
+
+
+class Session(dict):
+    """In memory storage between HTTP requests and responses."""
+    sessions = {}
+
+    @classmethod
+    def from_request(cls, request):
+        if 'X-Session-Id' in request.headers:
+            session_id = request.headers['X-Session-Id']
+        else:
+            # FIXME: This needs a LOT of work.
+            # It should probably be a hash of request line, Host and Cookies
+            # headers.
+            if request.is_reqmod:
+                session_id = hash(str(request.http.headers))
+            else:
+                session_id = hash(str(request.http.request_headers))
+
+        if session_id in cls.sessions:
+            return cls.sessions[session_id]
+
+        session = cls.sessions[session_id] = Session(session_id=session_id)
+        session.populate(request)
+        return session
+
+    def finished(self):
+        self.sessions.pop(self['session_id'], None)
+
+    def populate(self, request):
+        if request.http.request_line:
+            url = request.http.request_headers.get('Host', '') + request.http.request_line.uri
+            url = urlparse.urlparse(url)
+        else:
+            url = None
+        self['url'] = url

@@ -69,7 +69,7 @@ def test_icap_parsing_simple():
     print expected
     print '-----'
     print 'parent headers', m.headers
-    print 'child headers', m.encapsulated_message.headers
+    print 'child headers', m.http.headers
     assert_bodies_match(m, 'This is data that was returned by an origin server, but with\r\nvalue added by an ICAP server.')
     assert_stream_consumed(m)
 
@@ -101,10 +101,10 @@ def test_icap_parsing_complex():
 
     assert isinstance(m, ICAPRequest)
 
-    child = m.encapsulated_message
+    child = m.http
 
     assert ' '.join(m.sline) == 'RESPMOD icap://icap.example.org/satisf ICAP/1.0'
-    assert ' '.join(child.request_sline) == 'GET /origin-resource HTTP/1.1'
+    assert ' '.join(child.request_line) == 'GET /origin-resource HTTP/1.1'
     assert ' '.join(map(str, child.sline)) == 'HTTP/1.1 200 OK'
 
     assert m.headers == expected_headers
@@ -131,7 +131,7 @@ def test_icap_parsing_stupid(test_file, expected_values):
     print '----'
 
     m = ICAPRequest.from_bytes(data)
-    child = m.encapsulated_message
+    child = m.http
 
     has_headers = expected_values.get('headers', False)
     has_req_parts = expected_values.get('req_parts', False)
@@ -139,7 +139,7 @@ def test_icap_parsing_stupid(test_file, expected_values):
 
     if has_req_parts:
         assert m.is_respmod
-        assert child.request_sline
+        assert child.request_line
         assert child.request_headers
 
     assert bool(child.headers) == has_headers

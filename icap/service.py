@@ -173,4 +173,5 @@ class DomainService(RegexService):
         super(DomainService, self).__init__(domain_re)
 
     def can_handle(self, request):
-        return bool(self.regex.match(request.session['url'].netloc))
+        r = bool(self.regex.match(request.http.request_headers.get('Host')))
+        return r

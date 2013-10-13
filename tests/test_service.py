@@ -10,6 +10,8 @@ class FakeRequest(object):
         self.session = {
             'url': urlparse.urlparse(url),
         }
+        self.http = MagicMock()
+        self.http.request_headers.get.return_value = self.session['url'].netloc
 
 
 class DummyService(BaseService):
