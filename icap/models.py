@@ -360,6 +360,7 @@ class ICAPResponse(object):
         return self
 
     def serialize_to_stream(self, stream):
+        """Serialize the ICAP response and contained HTTP message to *stream*."""
         # FIXME: need to serialize OPTIONS requests too.
 
         self.set_required_headers()
@@ -377,9 +378,11 @@ class ICAPResponse(object):
         self.write_chunks(stream, self.http.chunks)
 
     def set_required_headers(self):
+        """Sets headers required for the ICAP response."""
         self.headers['Date'] = http_date()
 
     def write_chunks(self, stream, chunks):
+        """Write out each chunk to the given stream."""
         for chunk in self.http.chunks:
             s = chunk.content
             n = hex(len(s))[2:]  # strip off leading 0x
@@ -396,6 +399,9 @@ class ICAPResponse(object):
         stream.write('0\r\n')
 
     def set_encapsulated_header(self):
+        """Serialize the http message preamble, set the encapsulated header,
+        and return the serialized preamble.
+        """
         if self.status_line.code != 200:
             encapsulated = OrderedDict([('null-body', 0)])
             http_preamble = ''
