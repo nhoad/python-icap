@@ -128,4 +128,7 @@ class TestServer(object):
 
         print transaction
 
+        assert transaction.count('Date: ') >= 2
+        assert transaction.count('Encapsulated: ') == 2
+
         return transaction

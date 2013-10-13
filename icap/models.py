@@ -3,7 +3,7 @@ import urlparse
 from cStringIO import StringIO
 from collections import namedtuple, OrderedDict
 
-from werkzeug import cached_property
+from werkzeug import cached_property, http_date
 
 from .errors import MalformedRequestError, InvalidEncapsulatedHeadersError, response_codes
 from .utils import (dump_encapsulated_field, parse_encapsulated_field,
@@ -350,16 +350,22 @@ class ICAPResponse(object):
     def serialize_to_stream(self, stream):
         # FIXME: need to serialize OPTIONS requests too.
 
+        self.set_required_headers()
+
+        http_preamble = self.set_encapsulated_header()
+
         if self.status_line.code != 200:
             stream.write(str(self))
             return
 
-        http_preamble = self.set_encapsulated_header()
         stream.write(str(self))
         stream.write('\r\n')
         stream.write(http_preamble)
 
         self.write_chunks(stream, self.http.chunks)
+
+    def set_required_headers(self):
+        self.headers['Date'] = http_date()
 
     def write_chunks(self, stream, chunks):
         for chunk in self.http.chunks:
@@ -378,20 +384,24 @@ class ICAPResponse(object):
         stream.write('0\r\n')
 
     def set_encapsulated_header(self):
-        http = self.http
-        http_preamble = str(http) + '\r\n'
+        if self.status_line.code != 200:
+            encapsulated = OrderedDict([('null-body', 0)])
+            http_preamble = ''
+        else:
+            http = self.http
+            http_preamble = str(http) + '\r\n'
 
-        if http.is_request:
-            encapsulated = OrderedDict([('req-hdr', 0)])
-            body_key = 'req-body'
-        elif http.is_response:
-            encapsulated = OrderedDict([('res-hdr', 0)])
-            body_key = 'res-body'
+            if http.is_request:
+                encapsulated = OrderedDict([('req-hdr', 0)])
+                body_key = 'req-body'
+            elif http.is_response:
+                encapsulated = OrderedDict([('res-hdr', 0)])
+                body_key = 'res-body'
 
-        if not http.chunks:
-            body_key = 'null-body'
+            if not http.chunks:
+                body_key = 'null-body'
 
-        encapsulated[body_key] = len(http_preamble)
+            encapsulated[body_key] = len(http_preamble)
 
         self.headers['Encapsulated'] = dump_encapsulated_field(encapsulated)
 
