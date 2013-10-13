@@ -329,7 +329,10 @@ class ICAPResponse(object):
 
     @classmethod
     def from_error(cls, error):
-        status_code = error.status_code
+        if isinstance(error, int):
+            status_code = error
+        else:
+            status_code = error.status_code
         message = response_codes[status_code]
         self = cls(StatusLine('ICAP/1.0', status_code, message))
         return self

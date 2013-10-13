@@ -34,6 +34,25 @@ class TestServer(object):
     def test_handle_conn__handles_exceptions(self):
         assert False, "should raise a heap of different exceptions, to make sure they're handled."
 
+    @pytest.mark.parametrize(('input_bytes', 'expected_message'), [
+        ('OPTIONS / HTTP/1.0\r\n\r\n', '400 Bad request'),  # HTTP is a no-no
+        ('OPTIONS / ICAP/1.1\r\n\r\n', '505 ICAP version not supported'),  # invalid version
+        ('OPTIONS /\r\n\r\n', '400 Bad request'),  # malformed
+    ])
+    def test_non_icap_request_returns_400(self, input_bytes, expected_message):
+        socket = MagicMock()
+        fake_stream = StringIO(input_bytes)
+        socket.makefile.return_value = fake_stream
+        fake_stream.close = lambda: None
+
+        server = Server()
+        server.handle_conn(socket, MagicMock())
+
+        s = fake_stream.getvalue()
+
+        print s
+        assert expected_message in s
+
     @pytest.mark.parametrize('force_204', [True, False])
     def test_handle_conn__no_handler(self, force_204):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')

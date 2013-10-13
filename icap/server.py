@@ -1,9 +1,11 @@
 from .service import ServiceRegistry
 from .models import ICAPRequest, ICAPResponse, Session
-from .errors import abort, ICAPAbort
+from .errors import abort, ICAPAbort, MalformedRequestError
 
 
 class Server(object):
+    """Server, for handling requests on a given address."""
+
     def __init__(self, services=None):
         self.services = services or []
 
@@ -12,24 +14,41 @@ class Server(object):
             self.services = ServiceRegistry.finalize()
 
     def handle_conn(self, connection, addr):
+        """Handle a single connection. May handle many requests."""
+
         f = connection.makefile()
 
-        while True:
-            request = ICAPRequest.from_stream(f)
+        def respond_with_error(error):
+            # Clients are required to be aware of early returns, so sending an
+            # error back without reading everything up should be fine. If not,
+            # then, it's their fault for sending us invalid requests.
+            response = ICAPResponse.from_error(error)
+            response.serialize_to_stream(f)
+            f.close()
+            connection.close()
 
+        while True:
+            try:
+                request = ICAPRequest.from_stream(f)
+            except MalformedRequestError as e:
+                respond_with_error(400)
+                return
+
+            # connection was closed or some such.
             if request is None:
                 f.close()
                 connection.close()
                 return
 
-            # FIXME: handle 400 error here.
-            assert isinstance(request, ICAPRequest)
-            assert request.is_request
-            req_version = request.request_line.version
-            assert req_version.startswith('ICAP')
+            valid_request = (request.is_request and
+                             request.request_line.version.startswith('ICAP/'))
+            if not valid_request:
+                respond_with_error(400)
+                return
 
-            # FIXME: handle 505 error here.
-            assert req_version.endswith('/1.0')
+            if not request.request_line.version.endswith('/1.0'):
+                respond_with_error(505)
+                return
 
             if request.is_options:
                 self.handle_options(request)
@@ -63,9 +82,11 @@ class Server(object):
                     request.session.finished()
 
     def handle_options(self, request):
+        """Handle an OPTIONS request."""
         raise NotImplementedError()
 
     def handle_request(self, request):
+        """Handle a REQMOD or RESPMOD request."""
         service = None
         for service in self.services:
             if service.can_handle(request):
