@@ -58,6 +58,13 @@ encapsulated_input_orders = {
     'RESPMOD': '^(req-hdr )?(res-hdr )?%s$' % b('res'),
 }
 
+encapsulated_output_orders = {
+    'REQMOD': '(^(req-hdr )?%s$)|(^(res-hdr )?%s$)' % (b('req'), b('res')),
+    'RESPMOD': '^(res-hdr )?%s$' % b('res'),
+    'OPTIONS': '^%s$' % b('opt'),
+}
+
+
 del b
 
 
@@ -68,6 +75,7 @@ def compile_encapsulated(fields):
 
 
 encapsulated_input_orders = compile_encapsulated(encapsulated_input_orders)
+encapsulated_output_orders = compile_encapsulated(encapsulated_output_orders)
 
 
 def parse_encapsulated_field(raw_field):
@@ -95,3 +103,27 @@ def parse_encapsulated_field(raw_field):
                                in parsed.iteritems())
     else:
         raise InvalidEncapsulatedHeadersError(raw_field)
+
+
+def dump_encapsulated_field(field):
+    """Serialize `field` to a string.
+
+    Will raise :exc:`InvalidEncapsulatedHeadersError` if `field` is not a valid
+    ICAP Encapsulated response header, according to RFC3507 section 4.4.1.
+
+    >>> from icap.parsing import dump_encapsulated_field
+    >>> from collections import OrderedDict
+    >>> d = OrderedDict([('res-hdr', 0), ('res-body', 50)])
+    >>> dump_encapsulated_field(d)
+    'res-hdr=0, res-body=50'
+
+    :param field: an instance of :class:`collections.OrderedDict` to serialize.
+    :return: a string representation of `field`
+    """
+    keys = ' '.join(field)
+
+    for regex in encapsulated_output_orders.values():
+        if regex.match(keys):
+            return ', '.join('%s=%d' % it for it in field.iteritems())
+    else:
+        raise InvalidEncapsulatedHeadersError(field)
