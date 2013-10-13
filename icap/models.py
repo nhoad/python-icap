@@ -5,7 +5,12 @@ from collections import namedtuple, OrderedDict
 
 from werkzeug import cached_property, http_date
 
-from .errors import MalformedRequestError, InvalidEncapsulatedHeadersError, response_codes
+from .errors import (
+    InvalidEncapsulatedHeadersError,
+    MalformedRequestError,
+    abort,
+    response_codes)
+
 from .utils import (dump_encapsulated_field, parse_encapsulated_field,
                     convert_offsets_to_sizes)
 
@@ -282,6 +287,13 @@ class ICAPRequest(ChunkedMessage):
             m.complete(True)
 
         return self
+
+    def handle_status_line(self, sline):
+        super(ICAPRequest, self).handle_status_line(sline)
+
+        if self.sline.method not in {'OPTIONS', 'REQMOD', 'RESPMOD'}:
+            abort(501)
+
 
     def __iter__(self):
         for chunk in self.http:

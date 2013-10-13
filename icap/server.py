@@ -33,6 +33,9 @@ class Server(object):
             except MalformedRequestError as e:
                 respond_with_error(400)
                 return
+            except ICAPAbort as e:
+                respond_with_error(e)
+                return
 
             # connection was closed or some such.
             if request is None:

@@ -56,6 +56,7 @@ class TestServer(object):
         ('OPTIONS / HTTP/1.0\r\n\r\n', '400 Bad request'),  # HTTP is a no-no
         ('OPTIONS / ICAP/1.1\r\n\r\n', '505 ICAP version not supported'),  # invalid version
         ('OPTIONS /\r\n\r\n', '400 Bad request'),  # malformed
+        ('asdf / ICAP/1.0\r\n\r\n', '501 Method not implemented'),
     ])
     def test_non_icap_request_returns_400(self, input_bytes, expected_message):
         socket = MagicMock()
