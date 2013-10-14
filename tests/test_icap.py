@@ -59,7 +59,7 @@ def test_multiline_headers():
 
 
 def test_icap_parsing_simple():
-    expected = data_string('', 'icap_response_with_payload.response')
+    expected = data_string('', 'request_with_http_response_and_payload.request')
 
     m = ICAPRequest.from_bytes(expected)
 
@@ -70,7 +70,7 @@ def test_icap_parsing_simple():
     print '-----'
     print 'parent headers', m.headers
     print 'child headers', m.http.headers
-    assert_bodies_match(m, 'This is data that was returned by an origin server, but with\r\nvalue added by an ICAP server.')
+    assert_bodies_match(m, 'this is a payload')
     assert_stream_consumed(m)
 
 
