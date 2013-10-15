@@ -294,7 +294,6 @@ class ICAPRequest(ChunkedMessage):
         if self.sline.method not in {'OPTIONS', 'REQMOD', 'RESPMOD'}:
             abort(501)
 
-
     def __iter__(self):
         for chunk in self.http:
             yield chunk

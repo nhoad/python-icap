@@ -177,20 +177,19 @@ def test_sline_matching(input_bytes, expected_request):
 
 
 @pytest.mark.parametrize(('input_bytes', 'expected_fail'), [
-    ('RESPMOD / ICAP/1.1\r\nEncapsulated: null-body=0\r\n\r\n', False),
-    ('REQMOD / ICAP/1.1\r\nEncapsulated: null-body=0\r\n\r\n', False),
-    ('OPTIONS / ICAP/1.1\r\nEncapsulated: null-body=0\r\n\r\n', False),
+    ('RESPMOD / ICAP/1.1\r\n\r\n', True),
+    ('REQMOD / ICAP/1.1\r\n\r\n', True),
     ('OPTIONS / ICAP/1.1\r\n\r\n', False),
 ])
 def test_encapsulated_header_requirement(input_bytes, expected_fail):
-    m = ICAPRequest.from_bytes(input_bytes)
     try:
+        m = ICAPRequest.from_bytes(input_bytes)
         m.encapsulated_header
-    except InvalidEncapsulatedHeadersError:
+    except InvalidEncapsulatedHeadersError as e:
         if not expected_fail:
-            raise
+            raise e  # pragma: no cover
     else:
-        if expected_fail:
+        if expected_fail:  # pragma: no cover
             assert False, "Did not raise an error"
 
 
@@ -213,7 +212,8 @@ def test_malformed_request_line(input_bytes):
     except MalformedRequestError:
         pass
     else:
-        assert False, "Request is malformed, exception not raised."
+        assert False, "Request is malformed, exception not raised."  # pragma: no cover
+
 
 def test_HeadersDict():
     h = HeadersDict()
