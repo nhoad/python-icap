@@ -1,8 +1,9 @@
+import uuid
 from StringIO import StringIO
 
 import pytest
 
-from mock import MagicMock
+from mock import MagicMock, patch
 
 from icap import Server, DomainService
 
@@ -37,14 +38,30 @@ class TestServer(object):
         assert 'Date: ' in s
         assert 'Encapsulated: ' in s
 
-    def test_is_tag__valid_values(self):
-        assert False, "Should try and create a Server with a string and callable is_tag value."""
+    @pytest.mark.parametrize('is_tag', [
+        'a string',
+        lambda request: 'a string',
+    ])
+    def test_is_tag__valid_values(self, is_tag):
+        s = Server(is_tag=is_tag)
+        assert s.is_tag(None) == '"a string"'
 
-    def test_is_tag__invalid_values(self):
-        assert False, "Should try and create a Server with a bad is_tag value"""
+    @pytest.mark.parametrize(('is_tag', 'endswith'), [
+        ('1'*31+'2', '2'),
+        ('1'*30+'23', '3'),
+        ('lamp', 'lamp'),
+    ])
+    def test_is_tag__maximum_length(self, is_tag, endswith):
+        s = Server(is_tag=is_tag)
+
+        assert s.is_tag(None).endswith(endswith+'"')
 
     def test_is_tag__error(self):
-        assert False, "Try a bunch of cases where is_tag raises an exception."""
+        def is_tag(request):
+            raise Exception('boom')
+        server = Server(is_tag=is_tag)
+        server.fallback_is_tag = 'cool hash'
+        assert server.is_tag(None) == 'cool hash'
 
     def test_handle_conn__options_request_failure(self):
         assert False, "Should perform an OPTIONS request that fails in some way, to make sure it's handled."""

@@ -1,3 +1,4 @@
+import uuid
 import re
 
 from .service import ServiceRegistry
@@ -13,12 +14,20 @@ class Server(object):
         self.reqmod = reqmod
         self.respmod = respmod
 
+        self.fallback_is_tag = uuid.uuid4().hex
+
         if isinstance(is_tag, str):
-            self.is_tag = lambda request: '"%s"' % is_tag
+            self._is_tag = lambda request: is_tag
         elif callable(is_tag):
-            self.is_tag = is_tag
+            self._is_tag = is_tag
         else:
-            raise ValueError('is_tag must be either a string or callable')
+            self._is_tag = lambda request: self.fallback_is_tag
+
+    def is_tag(self, request):
+        try:
+            return '"%s"' % self._is_tag(request)[:32]
+        except Exception:
+            return self.fallback_is_tag
 
     def start(self):
         if not self.services:
