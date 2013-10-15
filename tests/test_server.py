@@ -1,9 +1,10 @@
 import uuid
+
 from StringIO import StringIO
 
 import pytest
 
-from mock import MagicMock
+from mock import MagicMock, patch
 
 from icap import Server, DomainService
 
@@ -28,7 +29,7 @@ class TestServer(object):
         socket.makefile.return_value = fake_stream
         fake_stream.close = lambda: None
 
-        server = Server(is_tag='cool server')
+        server = Server()
         server.handle_conn(socket, MagicMock())
 
         s = fake_stream.getvalue()
@@ -38,7 +39,7 @@ class TestServer(object):
         assert 'ICAP/1.0 200 OK' in s
         assert 'Methods: RESPMOD' in s
         assert 'Allow: 204' in s
-        assert 'ISTag: "cool server"' in s
+        assert 'ISTag: ' in s
         assert 'Date: ' in s
         assert 'Encapsulated: ' in s
 
@@ -47,7 +48,8 @@ class TestServer(object):
         lambda request: 'a string',
     ])
     def test_is_tag__valid_values(self, is_tag):
-        s = Server(is_tag=is_tag)
+        s = Server()
+        s.hooks('is_tag')(lambda request: 'a string')
         assert s.is_tag(None) == '"a string"'
 
     @pytest.mark.parametrize(('is_tag', 'endswith'), [
@@ -56,19 +58,65 @@ class TestServer(object):
         ('lamp', 'lamp'),
     ])
     def test_is_tag__maximum_length(self, is_tag, endswith):
-        s = Server(is_tag=is_tag)
-
+        s = Server()
+        s.hooks('is_tag')(lambda request: is_tag)
         assert s.is_tag(None).endswith(endswith+'"')
 
     def test_is_tag__error(self):
+        with patch.object(uuid.UUID, 'hex', 'cool hash'):
+            server = Server()
+
+        @server.hooks('is_tag')
         def is_tag(request):
             raise Exception('boom')
-        server = Server(is_tag=is_tag)
-        server.fallback_is_tag = 'cool hash'
-        assert server.is_tag(None) == 'cool hash'
+
+        assert server.is_tag(None) == '"cool hash"'
 
     def test_handle_conn__options_request_failure(self):
-        assert False, "Should perform an OPTIONS request that fails in some way, to make sure it's handled."""
+        input_bytes = data_string('', 'options_request.request')
+        socket = MagicMock()
+        fake_stream = StringIO(input_bytes)
+        socket.makefile.return_value = fake_stream
+        fake_stream.close = lambda: None
+
+        server = Server()
+        @server.hooks('options_headers')
+        def options_headers():
+            raise Exception('noooo')
+        server.handle_conn(socket, MagicMock())
+
+        s = fake_stream.getvalue()
+
+        print s
+        assert 'ICAP/1.0 200 OK' in s
+
+    def test_handle_conn__options_request_extra_headers(self):
+        input_bytes = data_string('', 'options_request.request')
+        socket = MagicMock()
+        fake_stream = StringIO(input_bytes)
+        socket.makefile.return_value = fake_stream
+        fake_stream.close = lambda: None
+
+        server = Server()
+        @server.hooks('options_headers')
+        def options_headers():
+            return {
+                'Transfer-Complete': '*',
+                'Options-TTL': '3600',
+            }
+        server.handle_conn(socket, MagicMock())
+
+        s = fake_stream.getvalue()
+
+        print s
+        assert 'ICAP/1.0 200 OK' in s
+        assert 'Methods: RESPMOD' in s
+        assert 'Allow: 204' in s
+        assert 'ISTag: ' in s
+        assert 'Date: ' in s
+        assert 'Encapsulated: ' in s
+        assert 'Transfer-Complete: *' in s
+        assert 'Options-TTL: 3600' in s
 
     def test_handle_conn__response_for_reqmod(self):
         assert False, "should test handler that returns a response"
@@ -97,7 +145,7 @@ class TestServer(object):
         def respmod(request):
             raise exception
 
-        server = Server(is_tag='cool server', services=[service])
+        server = Server(services=[service])
 
         transaction = self.run_test(server, input_bytes)
 
@@ -115,7 +163,7 @@ class TestServer(object):
         socket.makefile.return_value = fake_stream
         fake_stream.close = lambda: None
 
-        server = Server(is_tag='cool server')
+        server = Server()
         server.handle_conn(socket, MagicMock())
 
         s = fake_stream.getvalue()
@@ -127,7 +175,7 @@ class TestServer(object):
     def test_handle_conn__no_handler(self, force_204):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
-        server = Server(is_tag='cool server')
+        server = Server()
         transaction = self.run_test(server, input_bytes, force_204=force_204)
 
         if force_204:
@@ -144,7 +192,7 @@ class TestServer(object):
         def respmod(request):
             return
 
-        server = Server(is_tag='cool server', services=[service])
+        server = Server(services=[service])
         transaction = self.run_test(server, input_bytes, force_204=force_204)
 
         assert '200 OK' in transaction
@@ -158,7 +206,7 @@ class TestServer(object):
         def respmod(request):
             return "fooooooooooooooo"
 
-        server = Server(is_tag='cool server', services=[service])
+        server = Server(services=[service])
 
         transaction = self.run_test(server, input_bytes)
 
@@ -183,6 +231,6 @@ class TestServer(object):
         assert transaction.count('Date: ') >= 2
         assert transaction.count('Encapsulated: ') == 2
 
-        assert 'ISTag: "cool server"' in transaction
+        assert 'ISTag: ' in transaction
 
         return transaction

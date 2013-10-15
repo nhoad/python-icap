@@ -6,28 +6,89 @@ from .models import ICAPRequest, ICAPResponse, Session
 from .errors import abort, ICAPAbort, MalformedRequestError
 
 
+class Hooks(dict):
+    """Dispatch class for providing hooks at certain parts of the ICAP
+    transaction.
+
+    Used on a server instance like so:
+
+    >>> from icap.server import Server
+    >>> server = Server()
+    >>> @server.hooks('options_headers')
+    >>> def extra_headers():
+    ...     return {'new': 'headers'}
+
+
+    Available hooks:
+        options_headers:
+            Return dictionary of additional headers to add to the OPTIONS
+            response.
+
+            arguments: None.
+
+        is_tag:
+            Return a string to be used for a custom ISTag header on the response.
+            String will be sliced to maximum of 32 bytes.
+
+            arguments: request object, may be None.
+
+    """
+    def __getitem__(self, name):
+        """Return the callable hook matching *name*.
+
+        Always returns a callable that won't raise an exception.
+
+        """
+
+        if name in self:
+            func, default = dict.__getitem__(self, name)
+        else:
+            func = lambda *args: None
+            default = None
+
+        def safe_callable(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception:
+                return default
+        return safe_callable
+
+    def __call__(self, name, default=None, override=False):
+        """Register a hook function with *name*, and *default* return value.
+
+        Unless *override* is True, then *default* will only be saved the for
+        the first time. This is to ensure sane defaults are used in the event
+        that an error occurs in the registered hook.
+
+        """
+        # we want to keep the original default, as it will be used if the new
+        # one fails, e.g. for the ISTag header.
+        if name in self and not override:
+            _oldfunc, default = dict.__getitem__(self, name)
+
+        def wrapped(func):
+            self[name] = func, default
+        return wrapped
+
+
 class Server(object):
     """Server, for handling requests on a given address."""
 
-    def __init__(self, reqmod='/reqmod', respmod='/respmod', is_tag=None, services=None):
+    def __init__(self, reqmod='/reqmod', respmod='/respmod', services=None):
         self.services = services or []
         self.reqmod = reqmod
         self.respmod = respmod
 
-        self.fallback_is_tag = uuid.uuid4().hex
+        self.hooks = Hooks()
 
-        if isinstance(is_tag, str):
-            self._is_tag = lambda request: is_tag
-        elif callable(is_tag):
-            self._is_tag = is_tag
-        else:
-            self._is_tag = lambda request: self.fallback_is_tag
+        fallback_is_tag = uuid.uuid4().hex
+
+        @self.hooks('is_tag', default=fallback_is_tag)
+        def is_tag(request):
+            return fallback_is_tag
 
     def is_tag(self, request):
-        try:
-            return '"%s"' % self._is_tag(request)[:32]
-        except Exception:
-            return self.fallback_is_tag
+        return '"%s"' % self.hooks['is_tag'](request)[:32]
 
     def start(self):
         if not self.services:
@@ -111,6 +172,11 @@ class Server(object):
         response.headers['Methods'] = 'RESPMOD' if request.sline.uri.endswith(self.respmod) else 'REQMOD'
         response.headers['ISTag'] = self.is_tag(request)
         response.headers['Allow'] = '204'
+
+        extra_headers = self.hooks['options_headers']()
+
+        if extra_headers:
+            response.headers.update(extra_headers)
 
         response.serialize_to_stream(request.stream, self.is_tag(request))
 
