@@ -2,7 +2,7 @@ import uuid
 import re
 
 from .service import ServiceRegistry
-from .models import ICAPRequest, ICAPResponse, Session
+from .models import ICAPRequest, ICAPResponse, Session, ChunkedMessage
 from .errors import abort, ICAPAbort, MalformedRequestError
 
 
@@ -27,8 +27,8 @@ class Hooks(dict):
             arguments: None.
 
         is_tag:
-            Return a string to be used for a custom ISTag header on the response.
-            String will be sliced to maximum of 32 bytes.
+            Return a string to be used for a custom ISTag header on the
+            response. String will be sliced to maximum of 32 bytes.
 
             arguments: request object, may be None.
 
@@ -150,14 +150,15 @@ class Server(object):
 
                 if not request.complete():
                     transfer_chunks = ((response.http is not request.http)
-                                       and response.http.chunks)
+                                       and not response.http.chunks)
                     if transfer_chunks:
                         response.http.chunks.extend(list(request))
                     else:
                         for _ignored in request.http:
                             pass
 
-                response.http.complete(True)
+                if isinstance(response.http, ChunkedMessage):
+                    response.http.complete(True)
                 response.serialize_to_stream(f, self.is_tag(request))
 
                 # FIXME: if this service doesn't handle respmods, then this

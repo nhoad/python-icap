@@ -11,7 +11,9 @@ class FakeRequest(object):
             'url': urlparse.urlparse(url),
         }
         self.http = MagicMock()
-        self.http.request_headers.get.return_value = self.session['url'].netloc
+        self.http.headers.get.return_value = self.session['url'].netloc
+
+        self.is_reqmod = True
 
 
 class DummyService(BaseService):

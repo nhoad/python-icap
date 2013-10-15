@@ -6,7 +6,7 @@ import pytest
 
 from mock import MagicMock, patch
 
-from icap import Server, DomainService
+from icap import Server, DomainService, HTTPResponse, HeadersDict, HTTPRequest
 
 
 def data_string(req_line, path):
@@ -60,7 +60,9 @@ class TestServer(object):
     def test_is_tag__maximum_length(self, is_tag, endswith):
         s = Server()
         s.hooks('is_tag')(lambda request: is_tag)
-        assert s.is_tag(None).endswith(endswith+'"')
+        is_tag = s.is_tag(None)
+        assert is_tag.endswith(endswith+'"')
+        assert len(is_tag) <= 34
 
     def test_is_tag__error(self):
         with patch.object(uuid.UUID, 'hex', 'cool hash'):
@@ -119,16 +121,73 @@ class TestServer(object):
         assert 'Options-TTL: 3600' in s
 
     def test_handle_conn__response_for_reqmod(self):
-        assert False, "should test handler that returns a response"
+        input_bytes = data_string('', 'request_with_http_request_no_payload.request')
+
+        service = DomainService('www.origin-server.com')
+
+        @service.handler
+        def reqmod(request):
+            return HTTPResponse(body='cool body')
+
+        server = Server(services=[service])
+
+        transaction = self.run_test(server, input_bytes)
+
+        assert "HTTP/1.1 200 OK" in transaction
+        assert "cool body" in transaction
 
     def test_handle_conn__request_for_reqmod(self):
-        assert False, "should test handler that returns a request"
+        input_bytes = data_string('', 'request_with_http_request_no_payload.request')
+
+        service = DomainService('www.origin-server.com')
+
+        @service.handler
+        def reqmod(request):
+            return HTTPRequest(body='cool body', headers=request.headers)
+
+        server = Server(services=[service])
+
+        transaction = self.run_test(server, input_bytes)
+
+        assert "cool body" in transaction
 
     def test_handle_conn__request_for_respmod(self):
-        assert False, "should test handler that returns a request, causing a 500 response"
+        input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
+
+        service = DomainService('www.origin-server.com')
+
+        @service.handler
+        def respmod(request):
+            return HTTPRequest()
+
+        server = Server(services=[service])
+
+        transaction = self.run_test(server, input_bytes)
+
+        assert "500 Server error" in transaction
+        assert transaction.count("This is data that was returned by an origin server") == 1
 
     def test_handle_conn__response_for_respmod(self):
-        assert False, "should test handler that returns a response"
+        input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
+
+        service = DomainService('www.origin-server.com')
+
+        @service.handler
+        def respmod(request):
+            headers = HeadersDict([
+                ('Foo', 'bar'),
+                ('Bar', 'baz'),
+            ])
+            return HTTPResponse(headers=headers, body="cool data")
+
+        server = Server(services=[service])
+
+        transaction = self.run_test(server, input_bytes)
+
+        assert "cool data" in transaction
+        assert "Foo: bar" in transaction
+        assert "Bar: baz" in transaction
+        assert transaction.count("This is data that was returned by an origin server") == 1
 
     @pytest.mark.parametrize('exception', [
         ValueError,

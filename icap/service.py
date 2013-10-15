@@ -173,5 +173,10 @@ class DomainService(RegexService):
         super(DomainService, self).__init__(domain_re)
 
     def can_handle(self, request):
-        r = bool(self.regex.match(request.http.request_headers.get('Host')))
+        if request.is_reqmod:
+            headers = request.http.headers
+        else:
+            headers = request.http.request_headers
+
+        r = bool(self.regex.match(headers.get('Host')))
         return r

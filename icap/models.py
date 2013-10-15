@@ -428,6 +428,41 @@ class ICAPResponse(object):
         return http_preamble
 
 
+class HTTPRequest(object):
+    def __init__(self, request_line=None, headers=None, body=None):
+        # really not comfortable with that default...
+        self.request_line = request_line or RequestLine('GET', '/', 'HTTP/1.1')
+        if isinstance(body, str):
+            body = [body]
+
+        body = [BodyPart(b, '') for b in body]
+        self.chunks = body or []
+        self.headers = headers or HeadersDict()
+
+        self.is_request = True
+        self.is_response = False
+
+    def __str__(self):
+        return '\r\n'.join([' '.join(map(str, self.request_line)), str(self.headers)])
+
+
+class HTTPResponse(object):
+    def __init__(self, status_line=None, headers=None, body=None):
+        self.status_line = status_line or StatusLine('HTTP/1.1', 200, 'OK')
+        if isinstance(body, str):
+            body = [body]
+
+        body = [BodyPart(b, '') for b in body]
+        self.chunks = body or []
+        self.headers = headers or HeadersDict()
+
+        self.is_request = False
+        self.is_response = True
+
+    def __str__(self):
+        return '\r\n'.join([' '.join(map(str, self.status_line)), str(self.headers)])
+
+
 def parse_start_line(sline):
     """Parse the first line from an HTTP/ICAP message and return an instance of
     StatusLine or RequestLine.
@@ -477,9 +512,11 @@ class Session(dict):
         self.sessions.pop(self['session_id'], None)
 
     def populate(self, request):
-        if request.http.request_line:
+        if request.http.is_response:
             url = request.http.request_headers.get('Host', '') + request.http.request_line.uri
             url = urlparse.urlparse(url)
         else:
-            url = None
+            url = request.http.headers.get('Host', '') + request.http.request_line.uri
+            url = urlparse.urlparse(url)
+
         self['url'] = url
