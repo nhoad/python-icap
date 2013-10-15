@@ -17,7 +17,37 @@ class TestServer(object):
         assert False, "Should test that registered Services are added properly."
 
     def test_handle_conn__options_request(self):
-        assert False
+        input_bytes = data_string('', 'options_request.request')
+        socket = MagicMock()
+        fake_stream = StringIO(input_bytes)
+        socket.makefile.return_value = fake_stream
+        fake_stream.close = lambda: None
+
+        server = Server(is_tag='cool server')
+        server.handle_conn(socket, MagicMock())
+
+        s = fake_stream.getvalue()
+
+        print s
+
+        assert 'ICAP/1.0 200 OK' in s
+        assert 'Methods: RESPMOD' in s
+        assert 'Allow: 204' in s
+        assert 'ISTag: "cool server"' in s
+        assert 'Date: ' in s
+        assert 'Encapsulated: ' in s
+
+    def test_is_tag__valid_values(self):
+        assert False, "Should try and create a Server with a string and callable is_tag value."""
+
+    def test_is_tag__invalid_values(self):
+        assert False, "Should try and create a Server with a bad is_tag value"""
+
+    def test_is_tag__error(self):
+        assert False, "Try a bunch of cases where is_tag raises an exception."""
+
+    def test_handle_conn__options_request_failure(self):
+        assert False, "Should perform an OPTIONS request that fails in some way, to make sure it's handled."""
 
     def test_handle_conn__response_for_reqmod(self):
         assert False, "should test handler that returns a response"
@@ -46,7 +76,7 @@ class TestServer(object):
         def respmod(request):
             raise exception
 
-        server = Server(services=[service])
+        server = Server(is_tag='cool server', services=[service])
 
         transaction = self.run_test(server, input_bytes)
 
@@ -64,7 +94,7 @@ class TestServer(object):
         socket.makefile.return_value = fake_stream
         fake_stream.close = lambda: None
 
-        server = Server()
+        server = Server(is_tag='cool server')
         server.handle_conn(socket, MagicMock())
 
         s = fake_stream.getvalue()
@@ -76,7 +106,7 @@ class TestServer(object):
     def test_handle_conn__no_handler(self, force_204):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
-        server = Server()
+        server = Server(is_tag='cool server')
         transaction = self.run_test(server, input_bytes, force_204=force_204)
 
         if force_204:
@@ -93,7 +123,7 @@ class TestServer(object):
         def respmod(request):
             return
 
-        server = Server(services=[service])
+        server = Server(is_tag='cool server', services=[service])
         transaction = self.run_test(server, input_bytes, force_204=force_204)
 
         assert '200 OK' in transaction
@@ -107,7 +137,7 @@ class TestServer(object):
         def respmod(request):
             return "fooooooooooooooo"
 
-        server = Server(services=[service])
+        server = Server(is_tag='cool server', services=[service])
 
         transaction = self.run_test(server, input_bytes)
 
@@ -131,5 +161,7 @@ class TestServer(object):
 
         assert transaction.count('Date: ') >= 2
         assert transaction.count('Encapsulated: ') == 2
+
+        assert 'ISTag: "cool server"' in transaction
 
         return transaction

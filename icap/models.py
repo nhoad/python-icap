@@ -331,10 +331,11 @@ class ICAPRequest(ChunkedMessage):
 
 
 class ICAPResponse(object):
-    def __init__(self, status_line=None, headers=None, http=None):
+    def __init__(self, status_line=None, headers=None, http=None, is_options=False):
         self.status_line = status_line or StatusLine('ICAP/1.0', 200, 'OK')
         self.http = http or ChunkedMessage()
         self.headers = headers or HeadersDict()
+        self.is_options = is_options
 
     def __str__(self):
         return '\r\n'.join([' '.join(map(str, self.status_line)), str(self.headers)])
@@ -359,17 +360,17 @@ class ICAPResponse(object):
 
         return self
 
-    def serialize_to_stream(self, stream):
+    def serialize_to_stream(self, stream, is_tag):
         """Serialize the ICAP response and contained HTTP message to *stream*."""
-        # FIXME: need to serialize OPTIONS requests too.
-
-        self.set_required_headers()
+        self.set_required_headers(is_tag)
 
         http_preamble = self.set_encapsulated_header()
 
-        if self.status_line.code != 200:
+        if self.status_line.code != 200 or self.is_options:
             stream.write(str(self))
             return
+
+        # FIXME: need to serialize opt-body requests too.
 
         stream.write(str(self))
         stream.write('\r\n')
@@ -377,9 +378,10 @@ class ICAPResponse(object):
 
         self.write_chunks(stream, self.http.chunks)
 
-    def set_required_headers(self):
+    def set_required_headers(self, is_tag):
         """Sets headers required for the ICAP response."""
         self.headers['Date'] = http_date()
+        self.headers['ISTag'] = is_tag
 
     def write_chunks(self, stream, chunks):
         """Write out each chunk to the given stream."""
@@ -402,7 +404,7 @@ class ICAPResponse(object):
         """Serialize the http message preamble, set the encapsulated header,
         and return the serialized preamble.
         """
-        if self.status_line.code != 200:
+        if self.status_line.code != 200 or self.is_options:
             encapsulated = OrderedDict([('null-body', 0)])
             http_preamble = ''
         else:

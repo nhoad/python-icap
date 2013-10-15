@@ -1,3 +1,5 @@
+import re
+
 from .service import ServiceRegistry
 from .models import ICAPRequest, ICAPResponse, Session
 from .errors import abort, ICAPAbort, MalformedRequestError
@@ -6,8 +8,17 @@ from .errors import abort, ICAPAbort, MalformedRequestError
 class Server(object):
     """Server, for handling requests on a given address."""
 
-    def __init__(self, services=None):
+    def __init__(self, reqmod='/reqmod', respmod='/respmod', is_tag=None, services=None):
         self.services = services or []
+        self.reqmod = reqmod
+        self.respmod = respmod
+
+        if isinstance(is_tag, str):
+            self.is_tag = lambda request: '"%s"' % is_tag
+        elif callable(is_tag):
+            self.is_tag = is_tag
+        else:
+            raise ValueError('is_tag must be either a string or callable')
 
     def start(self):
         if not self.services:
@@ -23,7 +34,7 @@ class Server(object):
             # error back without reading everything up should be fine. If not,
             # then, it's their fault for sending us invalid requests.
             response = ICAPResponse.from_error(error)
-            response.serialize_to_stream(f)
+            response.serialize_to_stream(f, self.is_tag(None))
             f.close()
             connection.close()
 
@@ -77,7 +88,7 @@ class Server(object):
                             pass
 
                 response.http.complete(True)
-                response.serialize_to_stream(f)
+                response.serialize_to_stream(f, self.is_tag(request))
 
                 # FIXME: if this service doesn't handle respmods, then this
                 # would be a memory leak.
@@ -86,7 +97,13 @@ class Server(object):
 
     def handle_options(self, request):
         """Handle an OPTIONS request."""
-        raise NotImplementedError()
+        response = ICAPResponse(is_options=True)
+
+        response.headers['Methods'] = 'RESPMOD' if request.sline.uri.endswith(self.respmod) else 'REQMOD'
+        response.headers['ISTag'] = self.is_tag(request)
+        response.headers['Allow'] = '204'
+
+        response.serialize_to_stream(request.stream, self.is_tag(request))
 
     def handle_request(self, request):
         """Handle a REQMOD or RESPMOD request."""
@@ -117,3 +134,12 @@ class Server(object):
             abort(500)
         else:
             return response
+
+    def get_method_from_request(self, request):
+        # FIXME: This is crap. See TODO
+        uri = request.request_line.uri.lower()
+
+        if re.match('/reqmod/?', uri):
+            return 'REQMOD'
+        elif re.match('/reqmod/?', uri):
+            return 'RESPMOD'
