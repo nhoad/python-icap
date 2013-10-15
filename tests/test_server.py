@@ -3,7 +3,7 @@ from StringIO import StringIO
 
 import pytest
 
-from mock import MagicMock, patch
+from mock import MagicMock
 
 from icap import Server, DomainService
 
@@ -15,7 +15,11 @@ def data_string(req_line, path):
 
 class TestServer(object):
     def test_start(self):
-        assert False, "Should test that registered Services are added properly."
+        services = [DomainService('google.com') for i in xrange(10)]
+        s = Server()
+        s.start()
+
+        assert s.services == services
 
     def test_handle_conn__options_request(self):
         input_bytes = data_string('', 'options_request.request')
