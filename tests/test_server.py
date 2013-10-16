@@ -6,7 +6,7 @@ import pytest
 
 from mock import MagicMock, patch
 
-from icap import Server, DomainService, HTTPResponse, HeadersDict, HTTPRequest
+from icap import Server, DomainCriteria, HTTPResponse, HeadersDict, HTTPRequest, RegexCriteria
 
 
 def data_string(req_line, path):
@@ -16,11 +16,31 @@ def data_string(req_line, path):
 
 class TestServer(object):
     def test_start(self):
-        services = [DomainService('google.com') for i in xrange(10)]
         s = Server()
+
+        one = RegexCriteria(r'foo')
+        two = DomainCriteria('*google.com*')
+        three = RegexCriteria(r'foo')
+
+        @s.handler(one)
+        def respmod():
+            pass  # pragma: no cover
+
+        @s.handler(three)
+        def respmod():
+            pass  # pragma: no cover
+
+        @s.handler(two)
+        def respmod():
+            pass  # pragma: no cover
+
         s.start()
 
-        assert s.services == services
+        handlers = [i[0] for i in s.handlers['/respmod']]
+
+        print 'expected', [two, one, three]
+        print 'actual', handlers
+        assert handlers == [two, one, three]
 
     def test_handle_conn__options_request(self):
         input_bytes = data_string('', 'options_request.request')
@@ -123,13 +143,10 @@ class TestServer(object):
     def test_handle_conn__response_for_reqmod(self):
         input_bytes = data_string('', 'request_with_http_request_no_payload.request')
 
-        service = DomainService('www.origin-server.com')
-
-        @service.handler
+        server = Server()
+        @server.handler(DomainCriteria('www.origin-server.com'))
         def reqmod(request):
             return HTTPResponse(body='cool body')
-
-        server = Server(services=[service])
 
         transaction = self.run_test(server, input_bytes)
 
@@ -139,13 +156,11 @@ class TestServer(object):
     def test_handle_conn__request_for_reqmod(self):
         input_bytes = data_string('', 'request_with_http_request_no_payload.request')
 
-        service = DomainService('www.origin-server.com')
+        server = Server()
 
-        @service.handler
+        @server.handler(DomainCriteria('www.origin-server.com'))
         def reqmod(request):
             return HTTPRequest(body='cool body', headers=request.headers)
-
-        server = Server(services=[service])
 
         transaction = self.run_test(server, input_bytes)
 
@@ -154,13 +169,11 @@ class TestServer(object):
     def test_handle_conn__request_for_respmod(self):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
-        service = DomainService('www.origin-server.com')
+        server = Server()
 
-        @service.handler
+        @server.handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
             return HTTPRequest()
-
-        server = Server(services=[service])
 
         transaction = self.run_test(server, input_bytes)
 
@@ -170,17 +183,15 @@ class TestServer(object):
     def test_handle_conn__response_for_respmod(self):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
-        service = DomainService('www.origin-server.com')
+        server = Server()
 
-        @service.handler
+        @server.handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
             headers = HeadersDict([
                 ('Foo', 'bar'),
                 ('Bar', 'baz'),
             ])
             return HTTPResponse(headers=headers, body="cool data")
-
-        server = Server(services=[service])
 
         transaction = self.run_test(server, input_bytes)
 
@@ -198,13 +209,11 @@ class TestServer(object):
     def test_handle_conn__handles_exceptions(self, exception):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
-        service = DomainService('www.origin-server.com')
+        server = Server()
 
-        @service.handler
+        @server.handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
             raise exception
-
-        server = Server(services=[service])
 
         transaction = self.run_test(server, input_bytes)
 
@@ -245,13 +254,13 @@ class TestServer(object):
     @pytest.mark.parametrize('force_204', [True, False])
     def test_handle_conn__empty_return_forces_reserialisation(self, force_204):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
-        service = DomainService('www.origin-server.com')
 
-        @service.handler
+        server = Server()
+
+        @server.handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
             return
 
-        server = Server(services=[service])
         transaction = self.run_test(server, input_bytes, force_204=force_204)
 
         assert '200 OK' in transaction
@@ -259,13 +268,11 @@ class TestServer(object):
     def test_handle_conn__string_return(self):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
-        service = DomainService('www.origin-server.com')
+        server = Server()
 
-        @service.handler
+        @server.handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
             return "fooooooooooooooo"
-
-        server = Server(services=[service])
 
         transaction = self.run_test(server, input_bytes)
 
@@ -293,3 +300,96 @@ class TestServer(object):
         assert 'ISTag: ' in transaction
 
         return transaction
+
+    def test_handle_reqmod(self):
+        s = Server()
+
+        @s.handler(lambda *args: True)
+        def reqmod(self, *args):
+            pass  # pragma: no cover
+
+        assert s.get_handler(MagicMock())[0] == reqmod
+
+    def test_handle_respmod(self):
+        s = Server()
+
+        @s.handler(lambda *args: True)
+        def respmod(self, *args):
+            pass  # pragma: no cover
+
+        assert s.get_handler(MagicMock(is_reqmod=False))[0] == respmod
+
+    def test_handle_both(self):
+        s = Server()
+
+        @s.handler(lambda *args: True)
+        def respmod(self, *args):
+            pass  # pragma: no cover
+
+        @s.handler(lambda *args: True)
+        def reqmod(self, *args):
+            pass  # pragma: no cover
+
+        assert s.get_handler(MagicMock(is_reqmod=False))[0] == respmod
+        assert s.get_handler(MagicMock(is_reqmod=True))[0] == reqmod
+
+    def test_handle_class(self):
+        s = Server()
+
+        @s.handler(lambda *args: True)
+        class Foo(object):
+            def reqmod(self, message):
+                pass  # pragma: no cover
+
+            def respmod(self, message):
+                pass  # pragma: no cover
+
+        print s.handlers
+        assert s.get_handler(MagicMock())[0] == s.handlers['/reqmod'][0][1]
+        assert s.get_handler(MagicMock(is_reqmod=False))[0] == s.handlers['/respmod'][0][1]
+
+    def test_handle_raw(self):
+        s = Server()
+
+        called = [False, False]
+
+        reqmod = MagicMock(http='http')
+        respmod = MagicMock(is_reqmod=False, http='http')
+
+        @s.handler(lambda *args: True, raw=True)
+        class Foo(object):
+            def reqmod(self, message):
+                assert message != 'http'
+                assert message == reqmod
+                called[0] = True
+
+            def respmod(self, message):
+                assert message != 'http'
+                assert message == respmod
+                called[1] = True
+
+        s.handle_request(reqmod)
+        s.handle_request(respmod)
+
+        assert all(called)
+
+    def test_handle_mapping(self):
+        s = Server()
+
+        @s.handler(lambda *args: True, name='lamps')
+        def reqmod(message):
+            pass  # pragma: no cover
+
+        @s.handler(lambda *args: True, name='blarg')
+        def respmod(message):
+            pass  # pragma: no cover
+
+        print s.handlers.keys()
+
+        mock_request = MagicMock(is_reqmod=True)
+        mock_request.request_line.uri = '/lamps/reqmod'
+        assert s.get_handler(mock_request)[0] == reqmod
+
+        mock_request = MagicMock(is_reqmod=False)
+        mock_request.request_line.uri = '/blarg/respmod'
+        assert s.get_handler(mock_request)[0] == respmod

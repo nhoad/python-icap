@@ -1,7 +1,8 @@
 import uuid
-import re
 
-from .service import ServiceRegistry
+from types import ClassType, TypeType
+from collections import defaultdict
+
 from .models import ICAPRequest, ICAPResponse, Session, ChunkedMessage
 from .errors import abort, ICAPAbort, MalformedRequestError
 
@@ -79,6 +80,7 @@ class Server(object):
         self.reqmod = reqmod
         self.respmod = respmod
 
+        self.handlers = defaultdict(list)
         self.hooks = Hooks()
 
         fallback_is_tag = uuid.uuid4().hex
@@ -91,8 +93,8 @@ class Server(object):
         return '"%s"' % self.hooks['is_tag'](request)[:32]
 
     def start(self):
-        if not self.services:
-            self.services = ServiceRegistry.finalize()
+        for key, value in self.handlers.iteritems():
+            self.handlers[key] = sorted(value, key=lambda item: item[0])
 
     def handle_conn(self, connection, addr):
         """Handle a single connection. May handle many requests."""
@@ -181,22 +183,39 @@ class Server(object):
 
         response.serialize_to_stream(request.stream, self.is_tag(request))
 
+    def get_handler(self, request):
+        import urlparse
+        uri = urlparse.urlparse(request.request_line.uri)
+        path = uri.path
+        services = self.handlers.get(path)
+
+        if not services:
+            if request.is_reqmod:
+                key = '/reqmod'
+            else:
+                key = '/respmod'
+            services = self.handlers.get(key, [])
+
+        handler = None
+        for criteria, handler, raw in services:
+            if criteria(request):
+                return handler, raw
+        return None, False
+
     def handle_request(self, request):
         """Handle a REQMOD or RESPMOD request."""
-        service = None
-        for service in self.services:
-            if service.can_handle(request):
-                break
-            else:
-                service = None
-
-        if service is None:
+        handler, raw = self.get_handler(request)
+        if handler is None:
             abort(204)
 
         try:
-            response = service.handle(request)
+            if raw:
+                response = handler(request)
+            else:
+                response = handler(request.http)
+
         except (SystemExit, KeyboardInterrupt) as e:
-            raise
+            raise  # pragma: no cover
         except BaseException as e:
             # FIXME: communicating this exception in some way would be nice.
             abort(500)
@@ -211,11 +230,25 @@ class Server(object):
         else:
             return response
 
-    def get_method_from_request(self, request):
-        # FIXME: This is crap. See TODO
-        uri = request.request_line.uri.lower()
+    def handler(self, criteria, name='', raw=False):
+        def inner(handler):
+            if isinstance(handler, (ClassType, TypeType)):
+                handler = handler()
+                reqmod = getattr(handler, 'reqmod', None)
+                respmod = getattr(handler, 'respmod', None)
+            else:
+                reqmod = handler if handler.__name__ == 'reqmod' else None
+                respmod = handler if handler.__name__ == 'respmod' else None
 
-        if re.match('/reqmod/?', uri):
-            return 'REQMOD'
-        elif re.match('/reqmod/?', uri):
-            return 'RESPMOD'
+            if reqmod:
+                key = '/'.join([name, 'reqmod'])
+                key = key if key.startswith('/') else '/%s' % key
+                self.handlers[key].append((criteria, reqmod, raw))
+
+            if respmod:
+                key = '/'.join([name, 'respmod'])
+                key = key if key.startswith('/') else '/%s' % key
+                self.handlers[key].append((criteria, respmod, raw))
+            return handler
+
+        return inner

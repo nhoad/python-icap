@@ -350,13 +350,9 @@ class ICAPResponse(object):
         return self
 
     @classmethod
-    def from_request(cls, request, error=None):
-        if error is None:
-            status_line = StatusLine('ICAP/1.0', 200, 'OK')
-            self = cls(status_line, http=request.http)
-        else:
-            self = cls.from_error(error)
-
+    def from_request(cls, request):
+        status_line = StatusLine('ICAP/1.0', 200, 'OK')
+        self = cls(status_line, http=request.http)
         return self
 
     def serialize_to_stream(self, stream, is_tag):
@@ -431,10 +427,10 @@ class HTTPRequest(object):
     def __init__(self, request_line=None, headers=None, body=None):
         # really not comfortable with that default...
         self.request_line = request_line or RequestLine('GET', '/', 'HTTP/1.1')
-        if isinstance(body, str):
+        if isinstance(body, str) or body is None:
             body = [body]
 
-        body = [BodyPart(b, '') for b in body]
+        body = [BodyPart(b, '') for b in body if b]
         self.chunks = body or []
         self.headers = headers or HeadersDict()
 
@@ -448,7 +444,7 @@ class HTTPRequest(object):
 class HTTPResponse(object):
     def __init__(self, status_line=None, headers=None, body=None):
         self.status_line = status_line or StatusLine('HTTP/1.1', 200, 'OK')
-        if isinstance(body, str):
+        if isinstance(body, str) or body is None:
             body = [body]
 
         body = [BodyPart(b, '') for b in body]
