@@ -384,8 +384,8 @@ class ICAPResponse(object):
             s = chunk.content
             n = hex(len(s))[2:]  # strip off leading 0x
 
-            if chunk.header.strip() == 'ieof':
-                header = '%s; %s' % (n, chunk.header)
+            if chunk.header.strip() != 'ieof':
+                header = '%s; %s' % (n, chunk.header.strip())
             else:
                 header = n
 

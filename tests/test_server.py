@@ -264,6 +264,7 @@ class TestServer(object):
         transaction = self.run_test(server, input_bytes, force_204=force_204)
 
         assert '200 OK' in transaction
+        assert transaction.count('33; lamps') == 2
 
     def test_handle_conn__string_return(self):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
