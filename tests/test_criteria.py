@@ -2,7 +2,7 @@ import urlparse
 
 from mock import MagicMock
 
-from icap import RegexCriteria, DomainCriteria, BaseCriteria
+from icap import RegexCriteria, DomainCriteria
 
 
 class FakeRequest(object):
@@ -41,6 +41,17 @@ class TestDomainCriteria(object):
         assert r(FakeRequest('http://google.com'))
         assert r(FakeRequest('http://goggle.com'))
         assert not r(FakeRequest('http://giggle.com'))
+
+    def test_missing_host_header(self):
+        request = MagicMock()
+
+        def get(key, default):
+            return default
+
+        request.http.headers.get = get
+
+        r = DomainCriteria('google.com')
+        assert not r(request)
 
 
 def test_RegexCriteria():

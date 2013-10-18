@@ -58,5 +58,5 @@ class DomainCriteria(RegexCriteria):
         else:
             headers = request.http.request_headers
 
-        r = bool(self.regex.match(headers.get('Host')))
+        r = bool(self.regex.match(headers.get('Host', '')))
         return r
