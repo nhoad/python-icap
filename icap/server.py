@@ -1,6 +1,7 @@
+import socket
 import uuid
 
-from types import ClassType, TypeType
+from types import ClassType, TypeType, GeneratorType
 from collections import defaultdict
 
 from .models import ICAPRequest, ICAPResponse, Session, ChunkedMessage
@@ -107,12 +108,13 @@ class Server(object):
             # then, it's their fault for sending us invalid requests.
             response = ICAPResponse.from_error(error)
             response.serialize_to_stream(f, self.is_tag(None))
-            f.close()
-            connection.close()
 
         while True:
             try:
                 request = ICAPRequest.from_stream(f)
+            except socket.error:
+                # probably ECONNRESET. FIXME: logging
+                request = None
             except MalformedRequestError as e:
                 respond_with_error(400)
                 return
@@ -125,6 +127,9 @@ class Server(object):
                 f.close()
                 connection.close()
                 return
+
+            # Squid doesn't send Connection: close headers for OPTIONS requests.
+            should_close = request.is_options or (request.headers.get('Connection') == 'close')
 
             valid_request = (request.is_request and
                              request.request_line.version.startswith('ICAP/'))
@@ -161,6 +166,16 @@ class Server(object):
 
                 if isinstance(response.http, ChunkedMessage):
                     response.http.complete(True)
+
+                http = response.http
+
+                if len(http.chunks) == 1:
+                    content_length = sum((len(c.content) for c in http.chunks))
+                    http.headers.replace('Content-Length', str(content_length))
+                elif 'content-length' in http.headers:
+                    assert False
+                    del http.headers['content-length']
+
                 response.serialize_to_stream(f, self.is_tag(request))
 
                 # FIXME: if this service doesn't handle respmods, then this
@@ -168,12 +183,16 @@ class Server(object):
                 if request.is_respmod:
                     request.session.finished()
 
+            if should_close:
+                f.close()
+                connection.close()
+                return
+
     def handle_options(self, request):
         """Handle an OPTIONS request."""
         response = ICAPResponse(is_options=True)
 
         response.headers['Methods'] = 'RESPMOD' if request.sline.uri.endswith(self.respmod) else 'REQMOD'
-        response.headers['ISTag'] = self.is_tag(request)
         response.headers['Allow'] = '204'
 
         extra_headers = self.hooks['options_headers']()
@@ -222,7 +241,7 @@ class Server(object):
 
         if response is None:
             return request.http
-        elif isinstance(response, basestring):
+        elif isinstance(response, (basestring, list, GeneratorType)):
             request.http.set_payload(response)
             return request.http
         elif request.is_respmod and response.is_request:

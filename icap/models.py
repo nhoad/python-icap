@@ -2,6 +2,7 @@ import urlparse
 
 from cStringIO import StringIO
 from collections import namedtuple, OrderedDict
+from types import GeneratorType
 
 from werkzeug import cached_property, http_date
 
@@ -166,7 +167,12 @@ class ChunkedMessage(object):
     def set_payload(self, payload):
         for chunk in self:
             pass
-        self.chunks = [BodyPart(payload, '')]
+
+        if isinstance(payload, basestring):
+            payload = [BodyPart(payload, '')]
+        elif isinstance(payload, (list, GeneratorType)):
+            payload = [BodyPart(p, '') for p in payload]
+        self.chunks = payload
 
     def _feed_line(self, line):
         if not self.started():
@@ -266,16 +272,14 @@ class ICAPRequest(ChunkedMessage):
             m = ChunkedMessage()
             m.headers_complete(True)
             m.stream = self.stream
+        elif self.is_options and set(parts.keys()) == {'null-body'}:
+            # TODO: is this the right thing to do?
+            m = ChunkedMessage()
         else:
             # NOTE: As it stands, we don't actually use req-hdr or res-hdr for
             # reading the correct amount for headers here, but rely on the
             # ChunkedMessage parsing.
             m = ChunkedMessage.from_stream(self.stream)
-
-        if self.is_options and set(parts.keys()) == {'null-body'}:
-            assert m is None
-            # TODO: is this the right thing to do?
-            m = ChunkedMessage()
 
         self.http = m
 
@@ -363,6 +367,8 @@ class ICAPResponse(object):
 
         if self.status_line.code != 200 or self.is_options:
             stream.write(str(self))
+            stream.write('\r\n')
+            stream.flush()
             return
 
         # FIXME: need to serialize opt-body requests too.
@@ -370,8 +376,10 @@ class ICAPResponse(object):
         stream.write(str(self))
         stream.write('\r\n')
         stream.write(http_preamble)
+        stream.flush()
 
         self.write_chunks(stream, self.http.chunks)
+        stream.flush()
 
     def set_required_headers(self, is_tag):
         """Sets headers required for the ICAP response."""
@@ -384,14 +392,15 @@ class ICAPResponse(object):
             s = chunk.content
             n = hex(len(s))[2:]  # strip off leading 0x
 
-            if chunk.header.strip() != 'ieof':
-                header = '%s; %s' % (n, chunk.header.strip())
+            header = chunk.header.strip()
+            if header and header != 'ieof':
+                header = '%s; %s' % (n, header)
             else:
                 header = n
 
             stream.write(header+'\r\n')
             stream.write(s)
-            stream.write('\r\n')
+            stream.flush()
 
         stream.write('0\r\n')
 

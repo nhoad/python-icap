@@ -4,7 +4,7 @@ from StringIO import StringIO
 
 import pytest
 
-from mock import MagicMock, patch
+from mock import MagicMock, patch, call
 
 from icap import Server, DomainCriteria, HTTPResponse, HeadersDict, HTTPRequest, RegexCriteria
 
@@ -219,6 +219,14 @@ class TestServer(object):
 
         assert '500 Server error' in transaction
 
+    def test_handle_conn__handles_socket_errors(self):
+        import socket
+        server = Server()
+        s = MagicMock()
+        with patch('icap.server.ICAPRequest.from_stream', side_effect=socket.error):
+            server.handle_conn(s, MagicMock())
+        assert s.mock_calls[-1] == call.close()
+
     @pytest.mark.parametrize(('input_bytes', 'expected_message'), [
         ('OPTIONS / HTTP/1.0\r\n\r\n', '400 Bad request'),  # HTTP is a no-no
         ('OPTIONS / ICAP/1.1\r\n\r\n', '505 ICAP version not supported'),  # invalid version
@@ -275,11 +283,46 @@ class TestServer(object):
         def respmod(request):
             return "fooooooooooooooo"
 
-        transaction = self.run_test(server, input_bytes)
+        transaction = self.run_test(server, input_bytes, assert_mutated=True)
 
         assert "fooooooooooooooo" in transaction
 
-    def run_test(self, server, input_bytes, force_204=False):
+    def test_handle_conn__list_return(self):
+        input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
+
+        server = Server()
+
+        @server.handler(DomainCriteria('www.origin-server.com'))
+        def respmod(request):
+            return ["foo", "bar", "baz"]
+
+        transaction = self.run_test(server, input_bytes, assert_mutated=True,
+                                    multi_chunk=True)
+
+        assert "foo" in transaction
+        assert "bar" in transaction
+        assert "baz" in transaction
+
+    def test_handle_conn__iterable_return(self):
+        input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
+
+        server = Server()
+
+        @server.handler(DomainCriteria('www.origin-server.com'))
+        def respmod(request):
+            yield "foo"
+            yield "bar"
+            yield "baz"
+
+        transaction = self.run_test(server, input_bytes, assert_mutated=True,
+                                    multi_chunk=True)
+
+        assert "foo" in transaction
+        assert "bar" in transaction
+        assert "baz" in transaction
+
+    def run_test(self, server, input_bytes, force_204=False,
+                 assert_mutated=False, multi_chunk=False):
         if force_204:
             input_bytes = input_bytes.replace('Encapsulated', 'Allow: 204\r\nEncapsulated')
 
@@ -298,7 +341,14 @@ class TestServer(object):
         assert transaction.count('Date: ') >= 2
         assert transaction.count('Encapsulated: ') == 2
 
-        assert 'ISTag: ' in transaction
+        assert transaction.count('ISTag: ') == 1
+
+        if assert_mutated and not force_204:
+            assert transaction.count('Content-Length: 51') == 1
+            if not force_204 and not multi_chunk:
+                assert transaction.count('Content-Length: ') == 2
+            else:
+                assert transaction.count('Content-Length: ') == 1
 
         return transaction
 

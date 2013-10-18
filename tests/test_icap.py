@@ -1,5 +1,7 @@
 import pytest
 
+from mock import MagicMock, call
+
 from icap import ChunkedMessage, ICAPRequest, ICAPResponse, HeadersDict, RequestLine, StatusLine
 from icap.errors import MalformedRequestError, InvalidEncapsulatedHeadersError, ICAPAbort
 
@@ -265,6 +267,9 @@ def test_HeadersDict():
 
 class TestICAPResponse(object):
     def test_from_error(self):
+        s = ICAPResponse.from_error(200)
+        assert str(s) == 'ICAP/1.0 200 OK\r\n'
+
         s = ICAPResponse.from_error(ICAPAbort(200))
         assert str(s) == 'ICAP/1.0 200 OK\r\n'
 
@@ -278,3 +283,27 @@ class TestICAPResponse(object):
         s = ICAPResponse.from_error(ICAPAbort(204))
         s.headers = headers
         assert str(s) == 'ICAP/1.0 204 No modifications needed\r\nheader: value\r\n'
+
+    def test_serialize_options_to_stream(self):
+        s = ICAPResponse.from_error(ICAPAbort(200))
+        s.is_options = True
+
+        stream = MagicMock()
+        s.serialize_to_stream(stream, 'asdf')
+
+        calls = stream.mock_calls[-2:]
+
+        print calls
+        assert calls == [call.write('\r\n'), call.flush()]
+
+    def test_serialize_to_stream(self):
+        s = ICAPResponse.from_error(ICAPAbort(200))
+        s.http.sline = StatusLine('HTTP/1.1', 200, 'OK')
+
+        stream = MagicMock()
+        s.serialize_to_stream(stream, 'asdf')
+
+        calls = stream.mock_calls[-2:]
+
+        print calls
+        assert calls == [call.write('0\r\n'), call.flush()]
