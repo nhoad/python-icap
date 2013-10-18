@@ -399,7 +399,7 @@ class ICAPResponse(object):
                 header = n
 
             stream.write(header+'\r\n')
-            stream.write(s)
+            stream.write(s+'\r\n')
             stream.flush()
 
         stream.write('0\r\n')

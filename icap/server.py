@@ -76,11 +76,7 @@ class Hooks(dict):
 class Server(object):
     """Server, for handling requests on a given address."""
 
-    def __init__(self, reqmod='/reqmod', respmod='/respmod', services=None):
-        self.services = services or []
-        self.reqmod = reqmod
-        self.respmod = respmod
-
+    def __init__(self):
         self.handlers = defaultdict(list)
         self.hooks = Hooks()
 
@@ -173,7 +169,6 @@ class Server(object):
                     content_length = sum((len(c.content) for c in http.chunks))
                     http.headers.replace('Content-Length', str(content_length))
                 elif 'content-length' in http.headers:
-                    assert False
                     del http.headers['content-length']
 
                 response.serialize_to_stream(f, self.is_tag(request))
@@ -192,7 +187,7 @@ class Server(object):
         """Handle an OPTIONS request."""
         response = ICAPResponse(is_options=True)
 
-        response.headers['Methods'] = 'RESPMOD' if request.sline.uri.endswith(self.respmod) else 'REQMOD'
+        response.headers['Methods'] = 'RESPMOD' if request.sline.uri.endswith('respmod') else 'REQMOD'
         response.headers['Allow'] = '204'
 
         extra_headers = self.hooks['options_headers']()

@@ -317,9 +317,9 @@ class TestServer(object):
         transaction = self.run_test(server, input_bytes, assert_mutated=True,
                                     multi_chunk=True)
 
-        assert "foo" in transaction
-        assert "bar" in transaction
-        assert "baz" in transaction
+        assert "3\r\nfoo" in transaction
+        assert "3\r\nbar" in transaction
+        assert "3\r\nbaz\r\n0\r\n" in transaction
 
     def run_test(self, server, input_bytes, force_204=False,
                  assert_mutated=False, multi_chunk=False):
