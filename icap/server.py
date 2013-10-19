@@ -1,12 +1,16 @@
+import logging
 import time
 import socket
 import uuid
 
-from types import ClassType, TypeType, GeneratorType
+from types import ClassType, TypeType
 from collections import defaultdict
 
-from .models import ICAPRequest, ICAPResponse, Session
+from .models import ICAPResponse, Session, HTTPMessage
 from .errors import abort, ICAPAbort, MalformedRequestError
+from .parsing import ICAPRequestParser
+
+log = logging.getLogger(__name__)
 
 
 class Hooks(dict):
@@ -148,7 +152,7 @@ class Server(object):
 
         while True:
             try:
-                request = ICAPRequest.from_stream(f)
+                request = ICAPRequestParser.from_stream(f)
             except socket.error:
                 # probably ECONNRESET. FIXME: logging
                 request = None
@@ -178,54 +182,64 @@ class Server(object):
                 return
 
             if request.is_options:
-                self.handle_options(request, should_close=should_close)
+                self.handle_options(request, f, should_close=should_close)
             else:
-                request.session = Session.from_request(request)
                 try:
-                    response = self.handle_request(request)
+                    self.handle_mod(request, f, should_close=should_close)
                 except ICAPAbort as e:
+                    request.http.body.consume()
                     if e.status_code == 204 and not request.allow_204:
-                        response = ICAPResponse.from_request(request)
+                        response = ICAPResponse(http=request.http)
                     else:
                         response = ICAPResponse.from_error(e)
-                else:
-                    response = ICAPResponse(http=response)
 
-                if not request.complete():
-                    transfer_chunks = ((response.http is not request.http)
-                                       and not response.http.chunks)
-                    if transfer_chunks:
-                        response.http.chunks.extend(list(request))
-                    else:
-                        for _ignored in request.http:
-                            pass
-
-                http = response.http
-
-                if len(http.chunks) == 1:
-                    content_length = sum((len(c.content) for c in http.chunks))
-                    http.headers.replace('Content-Length', str(content_length))
-                elif 'content-length' in http.headers:
-                    del http.headers['content-length']
-
-                if should_close:
-                    response.headers['Connection'] = 'close'
-                response.serialize_to_stream(f, self.is_tag(request))
-
-                # FIXME: if this service doesn't handle respmods, then this
-                # would be a memory leak.
-                if request.is_respmod:
-                    request.session.finished()
+                    if should_close:
+                        response.headers['Connection'] = 'close'
+                    response.serialize_to_stream(f, self.is_tag(request))
 
             if should_close:
                 close()
                 return
 
-    def handle_options(self, request, should_close=False):
+    def handle_mod(self, request, stream, should_close=False):
+        request.session = Session.from_request(request)
+
+        has_body = request.has_body
+        response = self.handle_request(request)
+        response = ICAPResponse(http=response)
+
+        if has_body:
+            request.http.body.consume()
+
+        if response.status_line.code == 200:
+            transfer_chunks = ((response.http is not request.http)
+                               and not response.http.body)
+            if transfer_chunks:
+                response.http.body = request.http.body
+
+            http = response.http
+
+            if len(http.body) == 1:
+                content_length = sum((len(c.content) for c in http.body))
+                http.headers.replace('Content-Length', str(content_length))
+            elif 'content-length' in http.headers:
+                del http.headers['content-length']
+
+        if should_close:
+            response.headers['Connection'] = 'close'
+        response.serialize_to_stream(stream, self.is_tag(request))
+
+        # FIXME: if this service doesn't handle respmods, then this
+        # would be a memory leak.
+        if request.is_respmod:
+            request.session.finished()
+
+    def handle_options(self, request, stream, should_close=False):
         """Handle an OPTIONS request."""
         response = ICAPResponse(is_options=True)
 
-        response.headers['Methods'] = 'RESPMOD' if request.sline.uri.endswith('respmod') else 'REQMOD'
+        uri = request.request_line.uri
+        response.headers['Methods'] = 'RESPMOD' if uri.endswith('respmod') else 'REQMOD'
         response.headers['Allow'] = '204'
 
         extra_headers = self.hooks['options_headers']()
@@ -236,7 +250,7 @@ class Server(object):
         if should_close:
             response.headers['Connection'] = 'close'
 
-        response.serialize_to_stream(request.stream, self.is_tag(request))
+        response.serialize_to_stream(stream, self.is_tag(request))
 
     def get_handler(self, request):
         import urlparse
@@ -269,21 +283,23 @@ class Server(object):
             else:
                 response = handler(request.http)
 
-        except (SystemExit, KeyboardInterrupt) as e:
+        except (SystemExit, KeyboardInterrupt):
             raise  # pragma: no cover
-        except BaseException as e:
-            # FIXME: communicating this exception in some way would be nice.
+        except BaseException:
+            log.error("Error while processing %s request",
+                      request.request_line.method, exc_info=True)
             abort(500)
 
         if response is None:
             return request.http
-        elif isinstance(response, (basestring, list, GeneratorType)):
-            request.http.set_payload(response)
-            return request.http
-        elif request.is_respmod and response.is_request:
-            abort(500)
-        else:
+        elif isinstance(response, HTTPMessage):
+            if request.is_respmod and response.is_request:
+                abort(500)
             return response
+        else:
+            request.http.body = response
+            assert request.http.body.consumed
+            return request.http
 
     def handler(self, criteria, name='', raw=False):
         def inner(handler):

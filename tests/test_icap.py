@@ -2,7 +2,9 @@ import pytest
 
 from mock import MagicMock, call
 
-from icap import ChunkedMessage, ICAPRequest, ICAPResponse, HeadersDict, RequestLine, StatusLine
+from icap import ICAPRequest, ICAPResponse, HeadersDict, RequestLine, StatusLine
+from icap.models import HTTPMessage, HTTPResponse, BodyPipe, BodyPart
+from icap.parsing import HTTPMessageParser, ICAPRequestParser
 from icap.errors import MalformedRequestError, InvalidEncapsulatedHeadersError, ICAPAbort
 
 def data_string(req_line, path):
@@ -11,13 +13,21 @@ def data_string(req_line, path):
 
 
 def assert_stream_consumed(message):
-    assert message.stream.read() == ''
+    if not isinstance(message, HTTPMessage):
+        message = message.http
+    assert message.body.stream.read() == ''
 
 
 def assert_bodies_match(
         message, expected_bodies, headers=None, total_length=None):
 
-    chunks = list(message)
+    assert isinstance(message, (ICAPRequest, ICAPResponse, HTTPMessage))
+
+    if isinstance(message, ICAPRequest):
+        chunks = list(message.http.body)
+    else:
+        chunks = list(message.body)
+
     if isinstance(expected_bodies, basestring):
         expected_bodies = [expected_bodies]
 
@@ -41,7 +51,7 @@ def assert_bodies_match(
         dict(values=['Wiki', 'pedia', ' in\r\n\r\nchunks.'], headers=['bar', 'foo', 'qwer'])),
 ])
 def test_chunked_messages(input_bytes, expected_values):
-    m = ChunkedMessage.from_bytes(input_bytes)
+    m = HTTPMessageParser.from_bytes(input_bytes)
 
     assert_bodies_match(
         m, expected_values.get('values'),
@@ -56,14 +66,14 @@ def test_multiline_headers():
         '\t       bar\r\n'
         '\r\n'
     )
-    m = ChunkedMessage.from_bytes(s)
+    m = HTTPMessageParser.from_bytes(s)
     assert m.headers['great-header'] == 'foo bar'
 
 
 def test_icap_parsing_simple():
     expected = data_string('', 'request_with_http_response_and_payload.request')
 
-    m = ICAPRequest.from_bytes(expected)
+    m = ICAPRequestParser.from_bytes(expected)
 
     assert isinstance(m, ICAPRequest)
 
@@ -99,15 +109,15 @@ def test_icap_parsing_complex():
         ('Content-Length', '51'),
     ])
 
-    m = ICAPRequest.from_bytes(expected)
+    m = ICAPRequestParser.from_bytes(expected)
 
     assert isinstance(m, ICAPRequest)
 
     child = m.http
 
-    assert ' '.join(m.sline) == 'RESPMOD icap://icap.example.org/satisf ICAP/1.0'
+    assert ' '.join(m.request_line) == 'RESPMOD icap://icap.example.org/satisf ICAP/1.0'
     assert ' '.join(child.request_line) == 'GET /origin-resource HTTP/1.1'
-    assert ' '.join(map(str, child.sline)) == 'HTTP/1.1 200 OK'
+    assert ' '.join(map(str, child.status_line)) == 'HTTP/1.1 200 OK'
 
     assert m.headers == expected_headers
     assert child.request_headers == expected_child_request_headers
@@ -132,26 +142,10 @@ def test_icap_parsing_stupid(test_file, expected_values):
     print data
     print '----'
 
-    m = ICAPRequest.from_bytes(data)
-    child = m.http
-
-    has_headers = expected_values.get('headers', False)
-    has_req_parts = expected_values.get('req_parts', False)
-    body = expected_values.get('body')
-
-    if has_req_parts:
-        assert m.is_respmod
-        assert child.request_line
-        assert child.request_headers
-
-    assert bool(child.headers) == has_headers
-
-    if body:
-        assert_bodies_match(m, body)
-    else:
-        assert_bodies_match(m, [])
-
-    assert_stream_consumed(m)
+    try:
+        ICAPRequestParser.from_bytes(data)
+    except ICAPAbort as e:
+        assert e.status_code == 418
 
 
 @pytest.mark.parametrize(('input_bytes', 'expected_request'), [
@@ -161,9 +155,7 @@ def test_icap_parsing_stupid(test_file, expected_values):
     ('ICAP/1.1 200 OK\r\n\r\n', False),
 ])
 def test_sline_matching(input_bytes, expected_request):
-    m = ChunkedMessage.from_bytes(input_bytes)
-
-    assert m.headers_complete()
+    m = HTTPMessageParser.from_bytes(input_bytes)
 
     if expected_request:
         m.request_line
@@ -185,8 +177,7 @@ def test_sline_matching(input_bytes, expected_request):
 ])
 def test_encapsulated_header_requirement(input_bytes, expected_fail):
     try:
-        m = ICAPRequest.from_bytes(input_bytes)
-        m.encapsulated_header
+        m = ICAPRequestParser.from_bytes(input_bytes)
     except InvalidEncapsulatedHeadersError as e:
         if not expected_fail:
             raise e  # pragma: no cover
@@ -195,9 +186,15 @@ def test_encapsulated_header_requirement(input_bytes, expected_fail):
             assert False, "Did not raise an error"
 
 
-def test_short_read_headers():
+def test_short_read_http_headers():
     input_bytes = 'GET / HTTP/1.1\r\nHea'
-    m = ChunkedMessage.from_bytes(input_bytes)
+    m = HTTPMessageParser.from_bytes(input_bytes)
+    assert m is None
+
+
+def test_short_read_icap_headers():
+    input_bytes = 'REQMOD / ICAP/1.1\r\nHea'
+    m = ICAPRequestParser.from_bytes(input_bytes)
     assert m is None
 
 
@@ -210,7 +207,7 @@ def test_short_read_headers():
 ])
 def test_malformed_request_line(input_bytes):
     try:
-        ChunkedMessage.from_bytes(input_bytes)
+        HTTPMessageParser.from_bytes(input_bytes)
     except MalformedRequestError:
         pass
     else:
@@ -285,7 +282,7 @@ class TestICAPResponse(object):
         assert str(s) == 'ICAP/1.0 204 No modifications needed\r\nheader: value\r\n'
 
     def test_serialize_options_to_stream(self):
-        s = ICAPResponse.from_error(ICAPAbort(200))
+        s = ICAPResponse.from_error(200)
         s.is_options = True
 
         stream = MagicMock()
@@ -296,9 +293,21 @@ class TestICAPResponse(object):
         print calls
         assert calls == [call.write('\r\n'), call.flush()]
 
+    def test_serialize_no_body_to_stream(self):
+        s = ICAPResponse(http=HTTPResponse())
+
+        stream = MagicMock()
+        s.serialize_to_stream(stream, 'asdf')
+
+        calls = stream.mock_calls[-2:]
+
+        print calls
+        assert calls == [call.write('HTTP/1.1 200 OK\r\n\r\n'), call.flush()]
+
     def test_serialize_to_stream(self):
-        s = ICAPResponse.from_error(ICAPAbort(200))
-        s.http.sline = StatusLine('HTTP/1.1', 200, 'OK')
+        s = ICAPResponse(http=HTTPResponse())
+
+        s.http.body = ['a', 'b', 'c']
 
         stream = MagicMock()
         s.serialize_to_stream(stream, 'asdf')
@@ -307,3 +316,66 @@ class TestICAPResponse(object):
 
         print calls
         assert calls == [call.write('0\r\n\r\n'), call.flush()]
+
+
+class TestBodyPipe(object):
+    def test_consume_set_for_nonstreams(self):
+        b = BodyPipe([])
+        assert b.consumed
+        assert not list(b)
+
+        b = BodyPipe('blah')
+        assert b.consumed
+        assert list(b) == [BodyPart('blah', '')]
+
+        def foo():
+            yield "one"
+            yield "two"
+            yield "three"
+
+        b = BodyPipe(foo())
+        assert b.consumed
+        assert list(b) == [
+            BodyPart('one', ''),
+            BodyPart('two', ''),
+            BodyPart('three', ''),
+        ]
+
+    def test_consume_not_set_for_streams(self):
+        from StringIO import StringIO
+        b = BodyPipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
+        assert not b.consumed
+        assert list(b) == [BodyPart('foo', '')]
+        assert b.consumed
+
+        b = BodyPipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
+        assert not b.consumed
+        b.consume()
+        assert b.consumed
+        assert list(b) == [BodyPart('foo', '')]
+
+    def test_clear_does_not_read_from_stream(self):
+        from StringIO import StringIO
+        b = BodyPipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
+        assert not b.consumed
+        b.clear()
+        assert b.consumed
+        assert b.stream.read() == "3\r\nfoo\r\n0\r\n\r\n"
+        assert not list(b)
+
+    def test_wraps_BodyPart_properly(self):
+        b = BodyPipe(BodyPart('foo', 'bar'))
+        assert b.consumed
+        assert list(b) == [BodyPart('foo', 'bar')]
+
+    def test_len_stream(self):
+        b = BodyPipe(['a', 'b', 'c'])
+        assert len(b) == 3
+        assert b.consumed
+
+    def test_len__nonstream(self):
+        from StringIO import StringIO
+        b = BodyPipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
+
+        assert len(b) == 1
+        assert b.consumed

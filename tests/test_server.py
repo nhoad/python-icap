@@ -223,7 +223,7 @@ class TestServer(object):
         import socket
         server = Server(None)
         s = MagicMock()
-        with patch('icap.server.ICAPRequest.from_stream', side_effect=socket.error):
+        with patch('icap.server.ICAPRequestParser.from_stream', side_effect=socket.error):
             server.handle_conn(s, MagicMock())
         assert s.mock_calls[-1] == call.close()
 

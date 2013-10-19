@@ -1,10 +1,8 @@
 import urlparse
 
-from cStringIO import StringIO
 from collections import namedtuple, OrderedDict
-from types import GeneratorType
 
-from werkzeug import cached_property, http_date
+from werkzeug import http_date, cached_property
 
 from .errors import (
     InvalidEncapsulatedHeadersError,
@@ -12,20 +10,13 @@ from .errors import (
     abort,
     response_codes)
 
-from .utils import (dump_encapsulated_field, parse_encapsulated_field,
-                    convert_offsets_to_sizes)
+from .utils import dump_encapsulated_field
+from .parsing import ICAPRequestParser
 
 # who could resist a class name like this?
 BodyPart = namedtuple('BodyPart', 'content header')
 RequestLine = namedtuple('RequestLine', 'method uri version')
 StatusLine = namedtuple('StatusLine', 'version code reason')
-
-
-class ParseState(object):
-    empty = 1
-    started = 2
-    body_started = 3
-    body_ended = 4
 
 
 class HeadersDict(OrderedDict):
@@ -94,235 +85,37 @@ class HeadersDict(OrderedDict):
         return s
 
 
-class ChunkedMessage(object):
-    def __init__(self):
-        self.sline = None
-        self.headers = HeadersDict()
-        self.state = ParseState.empty
-        self.chunks = []
+class ICAPMessage(object):
+    def __init__(self, headers=None, http=None):
+        self.headers = headers or HeadersDict()
 
-    def started(self, set=False):
-        if set:
-            self.state = ParseState.started
-        return self.state != ParseState.empty
-
-    def headers_complete(self, set=False):
-        if set:
-            self.state = ParseState.body_started
-        return self.state > ParseState.started
-
-    def complete(self, set=False):
-        if set:
-            self.state = ParseState.body_ended
-        return self.state == ParseState.body_ended
-
-    def __str__(self):
-        return '\r\n'.join([' '.join(map(str, self.sline)), str(self.headers)])
-
-    def __iter__(self):
-        chunks = self.chunks
-
-        if self.complete():
-            for chunk in chunks:
-                yield chunk
-            return
-
-        while not self.complete():
-            line = self.stream.readline().strip()
-            try:
-                size, header = line.split(';', 1)
-            except ValueError:
-                size = line
-                header = ''
-
-            # needs support for trailers
-            size = int(size, 16)
-            if size:
-                # FIXME: non-crlf-endings
-                data = self.stream.read(size+2)  # +2 for CRLF
-                # FIXME: non-crlf-endings
-                chunk = BodyPart(data[:-2], header)
-                chunks.append(chunk)
-                yield chunk
-            else:
-                self.complete(True)
-                # end of stream, get rid of trailing newline
-                self.stream.readline()
-
-    @classmethod
-    def from_stream(cls, stream):
-        message = cls()
-
-        complete = message.headers_complete
-        while not complete():
-            line = stream.readline()
-
-            # Handle a short read, assume the connection was lost.
-            # FIXME: non-crlf-endings
-            if not line.endswith('\r\n'):
-                return None
-            message._feed_line(line)
-
-        assert message.headers_complete()
-
-        message.stream = stream
-        return message
-
-    @classmethod
-    def from_bytes(cls, bytes):
-        return cls.from_stream(StringIO(bytes))
-
-    def set_payload(self, payload):
-        for chunk in self:
-            pass
-
-        if isinstance(payload, basestring):
-            payload = [BodyPart(payload, '')]
-        elif isinstance(payload, (list, GeneratorType)):
-            payload = [BodyPart(p, '') for p in payload]
-        self.chunks = payload
-
-    def _feed_line(self, line):
-        if not self.started():
-            self.handle_status_line(line)
-        elif not self.headers_complete():
-            self.handle_header(line)
-
-    def handle_status_line(self, sline):
-        self.started(True)
-        self.sline = parse_start_line(sline.strip())
-
-    def handle_header(self, header):
-        # FIXME: non-crlf-endings
-        if not header.replace('\r\n', ''):
-            self.headers_complete(True)
-            return
-
-        # multiline headers
-        if header.startswith(('\t', ' ')):
-            k = self.headers.keys()[-1]
-            v = self.headers.pop(k)
-
-            # section 4.2 says that we MAY reduce whitespace down to a single
-            # character, so let's do it.
-            v = ' '.join((v, header.strip()))
-        else:
-            k, v = header.strip().split(':', 1)
-            k = k.rstrip()
-            v = v.lstrip()
-
-        self.headers[k] = v
+        # really not comfortable with this default...
+        self.http = http
 
     @cached_property
     def is_request(self):
-        return isinstance(self.sline, RequestLine)
+        return not self.is_response
 
     @cached_property
     def is_response(self):
-        return not self.is_request
+        return isinstance(self, ICAPResponse)
 
     @cached_property
-    def request_line(self):
-        '''Request line of the HTTP/ICAP request object, e.g. 'GET / HTTP/1.1'
-
-        This is a convenience attribute that points at `self.sline`.
-
-        Will raise AttributeError if the request object is not a request.
-        '''
-
-        if self.is_request:
-            return self.sline
-        raise AttributeError("%r object has no attribute 'request_line'"
-                             % (self.__class__.__name__))
-
-    @cached_property
-    def status_line(self):
-        '''Request line of the HTTP/ICAP request object, e.g. 'HTTP/1.1 200 OK'
-
-        This is a convenience attribute that points at `self.sline`.
-
-        Will raise AttributeError if the request object is not a response.
-        '''
-
-        if self.is_response:
-            return self.sline
-        raise AttributeError("%r object has no attribute 'status_line'"
-                             % (self.__class__.__name__))
+    def has_body(self):
+        return 'null-body' not in self.headers['encapsulated']
 
 
-class ICAPRequest(ChunkedMessage):
+class ICAPRequest(ICAPMessage):
+    def __init__(self, request_line=None, *args, **kwargs):
+        super(ICAPRequest, self).__init__(*args, **kwargs)
+        self.request_line = request_line or RequestLine('ICAP/1.1', 200, 'OK')
+
     @classmethod
-    def from_stream(cls, stream):
-        self = super(ICAPRequest, cls).from_stream(stream)
+    def from_parser(cls, parser):
+        assert isinstance(parser, ICAPRequestParser)
 
-        # handle a short read.
-        if self is None:
-            return self
-
-        assert self.headers_complete()
-
-        parts = convert_offsets_to_sizes(self.encapsulated_header)
-
-        if self.is_respmod:
-            if 'req-hdr' in parts:
-                data = self.stream.read(parts['req-hdr'])
-                req = ChunkedMessage.from_bytes(data)
-                req_sline = req.sline
-                req_headers = req.headers
-            else:
-                req_sline = None
-                req_headers = HeadersDict()
-
-        missing_headers = ((self.is_reqmod and 'req-hdr' not in parts) or
-                           (self.is_respmod and 'res-hdr' not in parts))
-
-        if missing_headers:
-            m = ChunkedMessage()
-            m.headers_complete(True)
-            m.stream = self.stream
-        elif self.is_options and set(parts.keys()) == {'null-body'}:
-            # TODO: is this the right thing to do?
-            m = ChunkedMessage()
-        else:
-            # NOTE: As it stands, we don't actually use req-hdr or res-hdr for
-            # reading the correct amount for headers here, but rely on the
-            # ChunkedMessage parsing.
-            m = ChunkedMessage.from_stream(self.stream)
-
-        self.http = m
-
-        if self.is_respmod:
-            m.request_line = req_sline
-            m.request_headers = req_headers
-
-        if 'null-body' in parts:
-            m.complete(True)
-
+        self = cls(parser.sline, parser.headers, parser.http)
         return self
-
-    def handle_status_line(self, sline):
-        super(ICAPRequest, self).handle_status_line(sline)
-
-        if self.sline.method not in {'OPTIONS', 'REQMOD', 'RESPMOD'}:
-            abort(501)
-
-    def __iter__(self):
-        for chunk in self.http:
-            yield chunk
-
-    @cached_property
-    def encapsulated_header(self):
-        try:
-            e = self.headers['encapsulated']
-        except KeyError:
-            if self.is_request and self.is_options:
-                e = 'null-body=0'
-            else:
-                raise InvalidEncapsulatedHeadersError(
-                    '%s object is missing encapsulated header' %
-                    (self.__class__.__name__))
-        parsed = parse_encapsulated_field(e)
-        return parsed
 
     @cached_property
     def allow_204(self):
@@ -330,22 +123,24 @@ class ICAPRequest(ChunkedMessage):
 
     @cached_property
     def is_reqmod(self):
-        return self.is_request and self.sline.method == 'REQMOD'
+        return self.request_line.method == 'REQMOD'
 
     @cached_property
     def is_respmod(self):
-        return self.is_request and self.sline.method == 'RESPMOD'
+        return self.request_line.method == 'RESPMOD'
 
     @cached_property
     def is_options(self):
-        return self.is_request and self.sline.method == 'OPTIONS'
+        return self.request_line.method == 'OPTIONS'
 
 
-class ICAPResponse(object):
-    def __init__(self, status_line=None, headers=None, http=None, is_options=False):
+class ICAPResponse(ICAPMessage):
+    def __init__(self, status_line=None, is_options=False, *args, **kwargs):
+        super(ICAPResponse, self).__init__(*args, **kwargs)
         self.status_line = status_line or StatusLine('ICAP/1.0', 200, 'OK')
-        self.http = http or ChunkedMessage()
-        self.headers = headers or HeadersDict()
+
+        # XXX: once the reserialization is moved out of this object, this can
+        # go.
         self.is_options = is_options
 
     def __str__(self):
@@ -359,12 +154,6 @@ class ICAPResponse(object):
             status_code = error.status_code
         message = response_codes[status_code]
         self = cls(StatusLine('ICAP/1.0', status_code, message))
-        return self
-
-    @classmethod
-    def from_request(cls, request):
-        status_line = StatusLine('ICAP/1.0', 200, 'OK')
-        self = cls(status_line, http=request.http)
         return self
 
     def serialize_to_stream(self, stream, is_tag):
@@ -385,16 +174,20 @@ class ICAPResponse(object):
         stream.write('\r\n')
         stream.write(http_preamble)
 
-        self.write_chunks(stream, self.http.chunks)
+        self.write_body(stream)
 
     def set_required_headers(self, is_tag):
         """Sets headers required for the ICAP response."""
         self.headers['Date'] = http_date()
         self.headers['ISTag'] = is_tag
 
-    def write_chunks(self, stream, chunks):
+    def write_body(self, stream):
         """Write out each chunk to the given stream."""
-        for chunk in self.http.chunks:
+        if not self.http.body:
+            stream.flush()
+            return
+
+        for chunk in self.http.body:
             s = chunk.content
             n = hex(len(s))[2:]  # strip off leading 0x
 
@@ -424,11 +217,11 @@ class ICAPResponse(object):
             if http.is_request:
                 encapsulated = OrderedDict([('req-hdr', 0)])
                 body_key = 'req-body'
-            elif http.is_response:
+            else:
                 encapsulated = OrderedDict([('res-hdr', 0)])
                 body_key = 'res-body'
 
-            if not http.chunks:
+            if not http or not http.body:
                 body_key = 'null-body'
 
             encapsulated[body_key] = len(http_preamble)
@@ -438,60 +231,151 @@ class ICAPResponse(object):
         return http_preamble
 
 
-class HTTPRequest(object):
-    def __init__(self, request_line=None, headers=None, body=None):
-        # really not comfortable with that default...
+class HTTPMessage(object):
+    def __init__(self, headers=None, body=None):
+        self.headers = headers or HeadersDict()
+        self.body = BodyPipe(body or [])
+
+    @property
+    def body(self):
+        return self.__body
+
+    @body.setter
+    def body(self, value):
+        if isinstance(value, BodyPipe):
+            self.__body = value
+        else:
+            self.__body.set(value)
+
+    def __str__(self):
+        if self.is_request:
+            field = self.request_line
+        else:
+            field = self.status_line
+
+        return '\r\n'.join([' '.join(map(str, field)), str(self.headers)])
+
+    @cached_property
+    def is_request(self):
+        return not self.is_response
+
+    @cached_property
+    def is_response(self):
+        return isinstance(self, HTTPResponse)
+
+
+class HTTPRequest(HTTPMessage):
+    def __init__(self, request_line=None, *args, **kwargs):
         self.request_line = request_line or RequestLine('GET', '/', 'HTTP/1.1')
-        if isinstance(body, str) or body is None:
-            body = [body]
+        super(HTTPRequest, self).__init__(*args, **kwargs)
 
-        body = [BodyPart(b, '') for b in body if b]
-        self.chunks = body or []
-        self.headers = headers or HeadersDict()
-
-        self.is_request = True
-        self.is_response = False
-
-    def __str__(self):
-        return '\r\n'.join([' '.join(map(str, self.request_line)), str(self.headers)])
+    @classmethod
+    def from_parser(cls, parser):
+        assert not isinstance(parser, ICAPRequestParser)
+        assert parser.is_request
+        return cls(parser.sline, parser.headers, parser.stream)
 
 
-class HTTPResponse(object):
-    def __init__(self, status_line=None, headers=None, body=None):
+class HTTPResponse(HTTPMessage):
+    def __init__(self, status_line=None, *args, **kwargs):
+        super(HTTPResponse, self).__init__(*args, **kwargs)
         self.status_line = status_line or StatusLine('HTTP/1.1', 200, 'OK')
-        if isinstance(body, str) or body is None:
-            body = [body]
 
-        body = [BodyPart(b, '') for b in body]
-        self.chunks = body or []
-        self.headers = headers or HeadersDict()
-
-        self.is_request = False
-        self.is_response = True
-
-    def __str__(self):
-        return '\r\n'.join([' '.join(map(str, self.status_line)), str(self.headers)])
+    @classmethod
+    def from_parser(cls, parser):
+        assert not isinstance(parser, ICAPRequestParser)
+        assert parser.is_response
+        return cls(parser.sline, parser.headers, parser.stream)
 
 
-def parse_start_line(sline):
-    """Parse the first line from an HTTP/ICAP message and return an instance of
-    StatusLine or RequestLine.
+# I think I'd prefer if this class was a lot more immutable. The setter in
+# HTTPMessage should be consuming + replacing with a new BodyPipe instance,
+# rather than modifying the one there.
+class BodyPipe(object):
+    def __init__(self, source):
+        self.chunks = []
+        self.consumed = False
+        self.stream = None
+        self.set(source)
 
-    Will raise MalformedRequestError if there was an error during parsing.
-    """
-    try:
-        method, uri, version = parts = sline.split(' ', 2)
-    except ValueError:
-        raise MalformedRequestError
+    def __iter__(self):
+        chunks = self.chunks
 
-    if method.upper().startswith(('HTTP', 'ICAP')):
-        version, code, reason = parts
+        if self.consumed or not self.stream:
+            self.consumed = True
+            for chunk in chunks:
+                yield chunk
+            return
+
+        while True:
+            line = self.stream.readline().strip()
+            try:
+                size, header = line.split(';', 1)
+            except ValueError:
+                size = line
+                header = ''
+
+            # needs support for trailers
+            size = int(size, 16)
+            if size:
+                # FIXME: non-crlf-endings
+                data = self.stream.read(size+2)  # +2 for CRLF
+                # FIXME: non-crlf-endings
+                chunk = BodyPart(data[:-2], header)
+                chunks.append(chunk)
+                yield chunk
+            else:
+                # end of stream, get rid of trailing newline
+                self.stream.readline()
+                self.consumed = True
+                return
+
+    def consume(self):
+        if not self.consumed:
+            list(self)
+            assert self.consumed
+
+    def clear(self):
+        self.chunks = []
+        self.consumed = True
+
+    def set(self, value):
+        if not self.consumed:
+            self.consume()
+
+        if hasattr(value, 'readline') and hasattr(value, 'read'):
+            self.stream = value
+            self.chunks = []
+            self.consumed = False
+            return
+
+        if isinstance(value, str):
+            value = [BodyPart(value, '')]
+        elif isinstance(value, BodyPart):
+            value = [value]
+
         try:
-            return StatusLine(version.upper(), int(code), reason)
-        except ValueError:
-            raise MalformedRequestError
-    else:
-        return RequestLine(method.upper(), uri, version.upper())
+            iter(value)
+        except TypeError:
+            raise
+        else:
+            chunks = []
+            for v in value:
+                if not isinstance(v, BodyPart):
+                    v = BodyPart(v, '')
+                chunks.append(v)
+
+            self.chunks = chunks
+            self.consumed = True
+
+    def __nonzero__(self):
+        return bool(len(self))
+
+    def __len__(self):
+        i = 0
+        for chunk in self:
+            i += 1
+        return i
 
 
 class Session(dict):
@@ -522,7 +406,7 @@ class Session(dict):
         self.sessions.pop(self['session_id'], None)
 
     def populate(self, request):
-        if request.http.is_response:
+        if isinstance(request.http, HTTPResponse):
             url = request.http.request_headers.get('Host', '') + request.http.request_line.uri
             url = urlparse.urlparse(url)
         else:
