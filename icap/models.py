@@ -29,6 +29,10 @@ class ParseState(object):
 
 
 class HeadersDict(OrderedDict):
+    """Multivalue, case-aware dictionary type used for headers of requests and
+    responses.
+
+    """
     def __init__(self, items=()):
         OrderedDict.__init__(self)
         for key, value in items:
@@ -43,6 +47,7 @@ class HeadersDict(OrderedDict):
             OrderedDict.__getitem__(self, lkey).append((key, value))
 
     def __getitem__(self, key):
+        """Return the first value stored at `key`."""
         return OrderedDict.__getitem__(self, key.lower())[0][1]
 
     def get(self, key, default=None):
@@ -52,12 +57,14 @@ class HeadersDict(OrderedDict):
             return default
 
     def getlist(self, key, default=list):
+        """Return all values stored at `key`."""
         try:
             return [v for k, v in OrderedDict.__getitem__(self, key.lower())]
         except KeyError:
             return default()
 
     def replace(self, key, value):
+        """Replace all values at `key` with `value`."""
         lkey = key.lower()
         OrderedDict.__setitem__(self, lkey, [(key, value)])
 
@@ -75,6 +82,7 @@ class HeadersDict(OrderedDict):
         return True
 
     def __str__(self):
+        """Return a string of the headers, suitable for writing to a stream."""
         if not self:
             return ''
 

@@ -85,7 +85,7 @@ def parse_encapsulated_field(raw_field):
     Will raise :exc:`InvalidEncapsulatedHeadersError` if `raw_field` is not a
     valid ICAP Encapsulated request header, according to RFC3507 section 4.4.1.
 
-    >>> from icap import parse_encapsulated_field
+    >>> from icap.utils import parse_encapsulated_field
     >>> parse_encapsulated_field('req-hdr=0, req-body=749')
     OrderedDict([('req-hdr', 0), ('req-body', 749)])
 
@@ -111,7 +111,7 @@ def dump_encapsulated_field(field):
     Will raise :exc:`InvalidEncapsulatedHeadersError` if `field` is not a valid
     ICAP Encapsulated response header, according to RFC3507 section 4.4.1.
 
-    >>> from icap.parsing import dump_encapsulated_field
+    >>> from icap.utils import dump_encapsulated_field
     >>> from collections import OrderedDict
     >>> d = OrderedDict([('res-hdr', 0), ('res-body', 50)])
     >>> dump_encapsulated_field(d)

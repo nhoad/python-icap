@@ -15,19 +15,21 @@ response_codes= {
 
 
 def abort(code):
-    """Utility function for quick-aborting a transaction."""
+    """Utility function for quick-aborting a transaction.
+
+    See :exc:`ICAPAbort` for more details.
+    """
     raise ICAPAbort(code)
 
 
 class ICAPAbort(Exception):
     """Used to quick abort a session with a given response code.
 
-    When handled in :class:`Service`, exceptions of this nature will be sent
-    back to the client with the ICAP status code that was raised. See
-    :func:`utils.catch_all_errors` for details.
+    When handled in :class:`icap.server.Server`, exceptions of this nature will be sent
+    back to the client with the ICAP status code that was raised.
 
-    This exception should not be used directly. :func:`utils.abort` should be
-    used instead.
+    This exception should not be used directly. :func:`abort` should be used
+    instead.
     """
     def __init__(self, status_code, message=None):
         if message is None:

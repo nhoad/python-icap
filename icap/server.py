@@ -94,7 +94,13 @@ class Server(object):
             self.handlers[key] = sorted(value, key=lambda item: item[0])
 
     def handle_conn(self, connection, addr):
-        """Handle a single connection. May handle many requests."""
+        """Handle a single connection. May handle many requests.
+
+        `connection` - the socket-(like) object connection to the client. Must
+        support both `makefile` and `close` operations.
+
+        `addr` - tuple of the client address and connected port.
+        """
 
         f = connection.makefile()
 
