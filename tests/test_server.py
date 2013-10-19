@@ -16,7 +16,7 @@ def data_string(req_line, path):
 
 class TestServer(object):
     def test_start(self):
-        s = Server()
+        s = Server(None)
 
         one = RegexCriteria(r'foo')
         two = DomainCriteria('*google.com*')
@@ -49,7 +49,7 @@ class TestServer(object):
         socket.makefile.return_value = fake_stream
         fake_stream.close = lambda: None
 
-        server = Server()
+        server = Server(None)
         server.handle_conn(socket, MagicMock())
 
         s = fake_stream.getvalue()
@@ -68,7 +68,7 @@ class TestServer(object):
         lambda request: 'a string',
     ])
     def test_is_tag__valid_values(self, is_tag):
-        s = Server()
+        s = Server(None)
         s.hooks('is_tag')(lambda request: 'a string')
         assert s.is_tag(None) == '"a string"'
 
@@ -78,7 +78,7 @@ class TestServer(object):
         ('lamp', 'lamp'),
     ])
     def test_is_tag__maximum_length(self, is_tag, endswith):
-        s = Server()
+        s = Server(None)
         s.hooks('is_tag')(lambda request: is_tag)
         is_tag = s.is_tag(None)
         assert is_tag.endswith(endswith+'"')
@@ -86,7 +86,7 @@ class TestServer(object):
 
     def test_is_tag__error(self):
         with patch.object(uuid.UUID, 'hex', 'cool hash'):
-            server = Server()
+            server = Server(None)
 
         @server.hooks('is_tag')
         def is_tag(request):
@@ -101,7 +101,7 @@ class TestServer(object):
         socket.makefile.return_value = fake_stream
         fake_stream.close = lambda: None
 
-        server = Server()
+        server = Server(None)
         @server.hooks('options_headers')
         def options_headers():
             raise Exception('noooo')
@@ -119,7 +119,7 @@ class TestServer(object):
         socket.makefile.return_value = fake_stream
         fake_stream.close = lambda: None
 
-        server = Server()
+        server = Server(None)
         @server.hooks('options_headers')
         def options_headers():
             return {
@@ -143,7 +143,7 @@ class TestServer(object):
     def test_handle_conn__response_for_reqmod(self):
         input_bytes = data_string('', 'request_with_http_request_no_payload.request')
 
-        server = Server()
+        server = Server(None)
         @server.handler(DomainCriteria('www.origin-server.com'))
         def reqmod(request):
             return HTTPResponse(body='cool body')
@@ -156,7 +156,7 @@ class TestServer(object):
     def test_handle_conn__request_for_reqmod(self):
         input_bytes = data_string('', 'request_with_http_request_no_payload.request')
 
-        server = Server()
+        server = Server(None)
 
         @server.handler(DomainCriteria('www.origin-server.com'))
         def reqmod(request):
@@ -169,7 +169,7 @@ class TestServer(object):
     def test_handle_conn__request_for_respmod(self):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
-        server = Server()
+        server = Server(None)
 
         @server.handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
@@ -183,7 +183,7 @@ class TestServer(object):
     def test_handle_conn__response_for_respmod(self):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
-        server = Server()
+        server = Server(None)
 
         @server.handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
@@ -209,7 +209,7 @@ class TestServer(object):
     def test_handle_conn__handles_exceptions(self, exception):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
-        server = Server()
+        server = Server(None)
 
         @server.handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
@@ -221,7 +221,7 @@ class TestServer(object):
 
     def test_handle_conn__handles_socket_errors(self):
         import socket
-        server = Server()
+        server = Server(None)
         s = MagicMock()
         with patch('icap.server.ICAPRequest.from_stream', side_effect=socket.error):
             server.handle_conn(s, MagicMock())
@@ -239,7 +239,7 @@ class TestServer(object):
         socket.makefile.return_value = fake_stream
         fake_stream.close = lambda: None
 
-        server = Server()
+        server = Server(None)
         server.handle_conn(socket, MagicMock())
 
         s = fake_stream.getvalue()
@@ -251,7 +251,7 @@ class TestServer(object):
     def test_handle_conn__no_handler(self, force_204):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
-        server = Server()
+        server = Server(None)
         transaction = self.run_test(server, input_bytes, force_204=force_204)
 
         if force_204:
@@ -263,7 +263,7 @@ class TestServer(object):
     def test_handle_conn__empty_return_forces_reserialisation(self, force_204):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
-        server = Server()
+        server = Server(None)
 
         @server.handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
@@ -277,7 +277,7 @@ class TestServer(object):
     def test_handle_conn__string_return(self):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
-        server = Server()
+        server = Server(None)
 
         @server.handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
@@ -290,7 +290,7 @@ class TestServer(object):
     def test_handle_conn__list_return(self):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
-        server = Server()
+        server = Server(None)
 
         @server.handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
@@ -306,7 +306,7 @@ class TestServer(object):
     def test_handle_conn__iterable_return(self):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
-        server = Server()
+        server = Server(None)
 
         @server.handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
@@ -353,7 +353,7 @@ class TestServer(object):
         return transaction
 
     def test_handle_reqmod(self):
-        s = Server()
+        s = Server(None)
 
         @s.handler(lambda *args: True)
         def reqmod(self, *args):
@@ -362,7 +362,7 @@ class TestServer(object):
         assert s.get_handler(MagicMock())[0] == reqmod
 
     def test_handle_respmod(self):
-        s = Server()
+        s = Server(None)
 
         @s.handler(lambda *args: True)
         def respmod(self, *args):
@@ -371,7 +371,7 @@ class TestServer(object):
         assert s.get_handler(MagicMock(is_reqmod=False))[0] == respmod
 
     def test_handle_both(self):
-        s = Server()
+        s = Server(None)
 
         @s.handler(lambda *args: True)
         def respmod(self, *args):
@@ -385,7 +385,7 @@ class TestServer(object):
         assert s.get_handler(MagicMock(is_reqmod=True))[0] == reqmod
 
     def test_handle_class(self):
-        s = Server()
+        s = Server(None)
 
         @s.handler(lambda *args: True)
         class Foo(object):
@@ -400,7 +400,7 @@ class TestServer(object):
         assert s.get_handler(MagicMock(is_reqmod=False))[0] == s.handlers['/respmod'][0][1]
 
     def test_handle_raw(self):
-        s = Server()
+        s = Server(None)
 
         called = [False, False]
 
@@ -425,7 +425,7 @@ class TestServer(object):
         assert all(called)
 
     def test_handle_mapping(self):
-        s = Server()
+        s = Server(None)
 
         @s.handler(lambda *args: True, name='lamps')
         def reqmod(message):

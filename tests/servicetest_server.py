@@ -18,7 +18,7 @@ from icap import Server
 def start_client(server):
     def later():
         s = socket.socket()
-        s.connect(('127.0.0.1', 4444))
+        s.connect(('127.0.0.1', 1334))
 
         with open('data/icap_request_with_two_header_sets.request') as f:
             sent = f.read()
@@ -61,15 +61,14 @@ def start_client(server):
 
 
 def main():
-    s = Server()
+    server = Server(StreamServer)
 
-    @s.handler(lambda *args: True)
+    @server.handler(lambda *args: True)
     def respmod(request):
         request.set_payload('cool woo')
 
-    server = StreamServer(('127.0.0.1', 4444), s.handle_conn)
     start_client(server)
-    server.serve_forever()
+    server.run()
 
 if __name__ == '__main__':
     main()

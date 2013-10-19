@@ -1,3 +1,4 @@
+import time
 import socket
 import uuid
 
@@ -76,15 +77,41 @@ class Hooks(dict):
 class Server(object):
     """Server, for handling requests on a given address."""
 
-    def __init__(self):
+    def __init__(self, server_class):
+        """
+        `server_class` - class used for accepting connections. Must support
+        interface as defined by :func:`icap.server.Server.run`.
+
+        """
+        self.server_class = server_class
+        self.running = True
         self.handlers = defaultdict(list)
         self.hooks = Hooks()
+        self.connections = []
 
         fallback_is_tag = uuid.uuid4().hex
 
         @self.hooks('is_tag', default=fallback_is_tag)
         def is_tag(request):
             return fallback_is_tag
+
+    def run(self, server_address=('0.0.0.0', 1334)):
+        """Run the given server class with `server_address` and ``self.handle_conn``.
+
+        This method will block until the server is stopped.
+        """
+        self.running = True
+        self.server = self.server_class(server_address, self.handle_conn)
+        self.server.serve_forever()
+
+    def stop(self):
+        """Stop the server, if it is running."""
+        if self.running:
+            self.server.stop()
+
+        # FIXME: this should have a configurable timeout.
+        while self.connections:
+            time.sleep(1)
 
     def is_tag(self, request):
         return '"%s"' % self.hooks['is_tag'](request)[:32]
@@ -101,14 +128,22 @@ class Server(object):
 
         `addr` - tuple of the client address and connected port.
         """
+        self.connections.append(connection)
 
         f = connection.makefile()
 
-        def respond_with_error(error):
+        def close():
+            f.close()
+            connection.close()
+            self.connections.remove(connection)
+
+        def respond_with_error(error, should_close):
             # Clients are required to be aware of early returns, so sending an
             # error back without reading everything up should be fine. If not,
             # then, it's their fault for sending us invalid requests.
             response = ICAPResponse.from_error(error)
+            if should_close:
+                response.headers['Connection'] = 'close'
             response.serialize_to_stream(f, self.is_tag(None))
 
         while True:
@@ -118,16 +153,15 @@ class Server(object):
                 # probably ECONNRESET. FIXME: logging
                 request = None
             except MalformedRequestError as e:
-                respond_with_error(400)
+                respond_with_error(400, should_close=False)
                 return
             except ICAPAbort as e:
-                respond_with_error(e)
+                respond_with_error(e, should_close=False)
                 return
 
             # connection was closed or some such.
             if request is None:
-                f.close()
-                connection.close()
+                close()
                 return
 
             # Squid doesn't send Connection: close headers for OPTIONS requests.
@@ -136,15 +170,15 @@ class Server(object):
             valid_request = (request.is_request and
                              request.request_line.version.startswith('ICAP/'))
             if not valid_request:
-                respond_with_error(400)
+                respond_with_error(400, should_close=should_close)
                 return
 
             if not request.request_line.version.endswith('/1.0'):
-                respond_with_error(505)
+                respond_with_error(505, should_close=should_close)
                 return
 
             if request.is_options:
-                self.handle_options(request)
+                self.handle_options(request, should_close=should_close)
             else:
                 request.session = Session.from_request(request)
                 try:
@@ -174,6 +208,8 @@ class Server(object):
                 elif 'content-length' in http.headers:
                     del http.headers['content-length']
 
+                if should_close:
+                    response.headers['Connection'] = 'close'
                 response.serialize_to_stream(f, self.is_tag(request))
 
                 # FIXME: if this service doesn't handle respmods, then this
@@ -182,11 +218,10 @@ class Server(object):
                     request.session.finished()
 
             if should_close:
-                f.close()
-                connection.close()
+                close()
                 return
 
-    def handle_options(self, request):
+    def handle_options(self, request, should_close=False):
         """Handle an OPTIONS request."""
         response = ICAPResponse(is_options=True)
 
@@ -197,6 +232,9 @@ class Server(object):
 
         if extra_headers:
             response.headers.update(extra_headers)
+
+        if should_close:
+            response.headers['Connection'] = 'close'
 
         response.serialize_to_stream(request.stream, self.is_tag(request))
 
