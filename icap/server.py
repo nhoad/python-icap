@@ -4,7 +4,7 @@ import uuid
 from types import ClassType, TypeType, GeneratorType
 from collections import defaultdict
 
-from .models import ICAPRequest, ICAPResponse, Session, ChunkedMessage
+from .models import ICAPRequest, ICAPResponse, Session
 from .errors import abort, ICAPAbort, MalformedRequestError
 
 
@@ -159,9 +159,6 @@ class Server(object):
                     else:
                         for _ignored in request.http:
                             pass
-
-                if isinstance(response.http, ChunkedMessage):
-                    response.http.complete(True)
 
                 http = response.http
 
