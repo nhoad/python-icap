@@ -354,12 +354,11 @@ class TestBodyPipe(object):
         assert b.consumed
         assert list(b) == [BodyPart('foo', '')]
 
-    def test_clear_does_not_read_from_stream(self):
+    def test_set_consumed_does_not_read_from_stream(self):
         from StringIO import StringIO
         b = BodyPipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
         assert not b.consumed
-        b.clear()
-        assert b.consumed
+        b.consumed = True
         assert b.stream.read() == "3\r\nfoo\r\n0\r\n\r\n"
         assert not list(b)
 

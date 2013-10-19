@@ -234,6 +234,7 @@ class ICAPResponse(ICAPMessage):
 class HTTPMessage(object):
     def __init__(self, headers=None, body=None):
         self.headers = headers or HeadersDict()
+        self.__body = None
         self.body = BodyPipe(body or [])
 
     @property
@@ -242,10 +243,12 @@ class HTTPMessage(object):
 
     @body.setter
     def body(self, value):
-        if isinstance(value, BodyPipe):
-            self.__body = value
-        else:
-            self.__body.set(value)
+        if not isinstance(value, (StreamBodyPipe, MemoryBodyPipe)):
+            value = BodyPipe(value or [])
+
+        if isinstance(self.__body, StreamBodyPipe):
+            self.__body.consume()
+        self.__body = value
 
     def __str__(self):
         if self.is_request:
@@ -288,21 +291,53 @@ class HTTPResponse(HTTPMessage):
         return cls(parser.sline, parser.headers, parser.stream)
 
 
-# I think I'd prefer if this class was a lot more immutable. The setter in
-# HTTPMessage should be consuming + replacing with a new BodyPipe instance,
-# rather than modifying the one there.
-class BodyPipe(object):
+def BodyPipe(source):
+    """Factory function that returns an instance of :class:`MemoryBodyPipe` or
+    :class:`StreamBodyPipe`, depending on the input.
+    """
+    if hasattr(source, 'readline') and hasattr(source, 'read'):
+        return StreamBodyPipe(source)
+    return MemoryBodyPipe(source or [])
+
+
+class MemoryBodyPipe(list):
+    """An iterator over in-memory objects, e.g. a list, a string,
+    or a generator.
+    """
+    def __init__(self, value):
+        self.consumed = True
+
+        if isinstance(value, str):
+            value = [BodyPart(value, '')]
+        elif isinstance(value, BodyPart):
+            value = [value]
+
+        try:
+            iter(value)
+        except TypeError:
+            raise
+        else:
+            chunks = []
+            for v in value:
+                if not isinstance(v, BodyPart):
+                    v = BodyPart(v, '')
+                chunks.append(v)
+            chunks = chunks
+
+        super(MemoryBodyPipe, self).__init__(chunks)
+
+
+class StreamBodyPipe(object):
+    """An iterator over a stream, e.g. StringIO or a file."""
     def __init__(self, source):
         self.chunks = []
         self.consumed = False
-        self.stream = None
-        self.set(source)
+        self.stream = source
 
     def __iter__(self):
         chunks = self.chunks
 
-        if self.consumed or not self.stream:
-            self.consumed = True
+        if self.consumed:
             for chunk in chunks:
                 yield chunk
             return
@@ -332,50 +367,18 @@ class BodyPipe(object):
 
     def consume(self):
         if not self.consumed:
-            list(self)
-            assert self.consumed
-
-    def clear(self):
-        self.chunks = []
-        self.consumed = True
-
-    def set(self, value):
-        if not self.consumed:
-            self.consume()
-
-        if hasattr(value, 'readline') and hasattr(value, 'read'):
-            self.stream = value
-            self.chunks = []
-            self.consumed = False
-            return
-
-        if isinstance(value, str):
-            value = [BodyPart(value, '')]
-        elif isinstance(value, BodyPart):
-            value = [value]
-
-        try:
-            iter(value)
-        except TypeError:
-            raise
-        else:
-            chunks = []
-            for v in value:
-                if not isinstance(v, BodyPart):
-                    v = BodyPart(v, '')
-                chunks.append(v)
-
-            self.chunks = chunks
+            for chunk in self:
+                pass
             self.consumed = True
+        assert self.consumed
 
-    def __nonzero__(self):
-        return bool(len(self))
+    def __bool__(self):
+        self.consume()
+        return bool(self.chunks)
 
     def __len__(self):
-        i = 0
-        for chunk in self:
-            i += 1
-        return i
+        self.consume()
+        return len(self.chunks)
 
 
 class Session(dict):

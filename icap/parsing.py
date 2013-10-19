@@ -140,7 +140,8 @@ class ICAPRequestParser(ChunkedMessageParser):
         if m is not None and 'null-body' in parts:
             # can't use property magic here. Would try and read from stream,
             # which would break
-            m.body.clear()
+            m.body.consumed = True
+            m.body = []
 
         return self.to_icap()
 

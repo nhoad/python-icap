@@ -6,7 +6,7 @@ import uuid
 from types import ClassType, TypeType
 from collections import defaultdict
 
-from .models import ICAPResponse, Session, HTTPMessage
+from .models import ICAPResponse, Session, HTTPMessage, StreamBodyPipe
 from .errors import abort, ICAPAbort, MalformedRequestError
 from .parsing import ICAPRequestParser
 
@@ -187,7 +187,8 @@ class Server(object):
                 try:
                     self.handle_mod(request, f, should_close=should_close)
                 except ICAPAbort as e:
-                    request.http.body.consume()
+                    if request.has_body and isinstance(request.http.body, StreamBodyPipe):
+                        request.http.body.consume()
                     if e.status_code == 204 and not request.allow_204:
                         response = ICAPResponse(http=request.http)
                     else:
@@ -208,7 +209,7 @@ class Server(object):
         response = self.handle_request(request)
         response = ICAPResponse(http=response)
 
-        if has_body:
+        if has_body and isinstance(request.http.body, StreamBodyPipe):
             request.http.body.consume()
 
         if response.status_line.code == 200:
