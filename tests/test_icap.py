@@ -306,4 +306,4 @@ class TestICAPResponse(object):
         calls = stream.mock_calls[-2:]
 
         print calls
-        assert calls == [call.write('0\r\n'), call.flush()]
+        assert calls == [call.write('0\r\n\r\n'), call.flush()]

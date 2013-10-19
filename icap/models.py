@@ -376,10 +376,8 @@ class ICAPResponse(object):
         stream.write(str(self))
         stream.write('\r\n')
         stream.write(http_preamble)
-        stream.flush()
 
         self.write_chunks(stream, self.http.chunks)
-        stream.flush()
 
     def set_required_headers(self, is_tag):
         """Sets headers required for the ICAP response."""
@@ -400,9 +398,9 @@ class ICAPResponse(object):
 
             stream.write(header+'\r\n')
             stream.write(s+'\r\n')
-            stream.flush()
 
-        stream.write('0\r\n')
+        stream.write('0\r\n\r\n')
+        stream.flush()
 
     def set_encapsulated_header(self):
         """Serialize the http message preamble, set the encapsulated header,
