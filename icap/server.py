@@ -1,6 +1,7 @@
 import logging
-import time
 import socket
+import time
+import urlparse
 import uuid
 
 from types import ClassType, TypeType
@@ -197,6 +198,8 @@ class Server(object):
                     else:
                         response = ICAPResponse.from_error(e)
 
+            self.hooks['before_serialization'](request, response)
+
             s = Serializer(
                 response, self.is_tag(request), is_options=request.is_options,
                 should_close=should_close)
@@ -252,7 +255,6 @@ class Server(object):
         return response
 
     def get_handler(self, request):
-        import urlparse
         uri = urlparse.urlparse(request.request_line.uri)
         path = uri.path
         services = self.handlers.get(path)
