@@ -11,7 +11,7 @@ from .errors import (
     response_codes)
 
 from .parsing import ICAPRequestParser
-from .serialization import BodyPipe, StreamBodyPipe, MemoryBodyPipe
+from .serialization import bodypipe, StreamBodyPipe, MemoryBodyPipe
 
 RequestLine = namedtuple('RequestLine', 'method uri version')
 StatusLine = namedtuple('StatusLine', 'version code reason')
@@ -155,7 +155,7 @@ class HTTPMessage(object):
     def __init__(self, headers=None, body=None):
         self.headers = headers or HeadersDict()
         self.__body = None
-        self.body = BodyPipe(body or [])
+        self.body = bodypipe(body or [])
 
     @property
     def body(self):
@@ -164,7 +164,7 @@ class HTTPMessage(object):
     @body.setter
     def body(self, value):
         if not isinstance(value, (StreamBodyPipe, MemoryBodyPipe)):
-            value = BodyPipe(value or [])
+            value = bodypipe(value or [])
 
         if isinstance(self.__body, StreamBodyPipe):
             self.__body.consume()

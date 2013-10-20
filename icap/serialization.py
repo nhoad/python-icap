@@ -111,7 +111,7 @@ class Serializer(object):
         # TODO: ensure required authorization headers are preserved
 
 
-def BodyPipe(source):
+def bodypipe(source):
     """Factory function that returns an instance of :class:`MemoryBodyPipe` or
     :class:`StreamBodyPipe`, depending on the input.
     """
@@ -148,7 +148,17 @@ class MemoryBodyPipe(list):
 
 
 class StreamBodyPipe(object):
-    """An iterator over a stream, e.g. StringIO or a file."""
+    """An iterator over a stream, e.g. StringIO or a file.
+
+    This is the on `body` attribute on instances of
+    :class:`icap.models.HTTPRequest` and :class:`icap.models.HTTPResponse`.
+    Iterating over this object will yield an instance of `BodyPart`, containing
+    a part of the payload.
+
+    This is akin to the chunked Transfer-Encoding header in HTTP. For
+    non-chunked messages, aa single `BodyPart` will be yielded containing the
+    payload.
+    """
     def __init__(self, source):
         self.chunks = []
         self.consumed = False
@@ -164,6 +174,8 @@ class StreamBodyPipe(object):
 
         while True:
             line = self.stream.readline().strip()
+
+            # FIXME: this should handle short reads.
             try:
                 size, header = line.split(';', 1)
             except ValueError:
@@ -186,6 +198,9 @@ class StreamBodyPipe(object):
                 return
 
     def consume(self):
+        """Consume the input stream. Typically used for reserialization. Should
+        not need to be used directly.
+        """
         if not self.consumed:
             for chunk in self:
                 pass

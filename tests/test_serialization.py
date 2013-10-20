@@ -1,7 +1,7 @@
 from mock import MagicMock, call
 
 from icap import ICAPResponse, HTTPResponse
-from icap.serialization import Serializer, BodyPipe, BodyPart
+from icap.serialization import Serializer, bodypipe, BodyPart
 
 
 class TestSerializer(object):
@@ -44,11 +44,11 @@ class TestSerializer(object):
 
 class TestBodyPipe(object):
     def test_consume_set_for_nonstreams(self):
-        b = BodyPipe([])
+        b = bodypipe([])
         assert b.consumed
         assert not list(b)
 
-        b = BodyPipe('blah')
+        b = bodypipe('blah')
         assert b.consumed
         assert list(b) == [BodyPart('blah', '')]
 
@@ -57,7 +57,7 @@ class TestBodyPipe(object):
             yield "two"
             yield "three"
 
-        b = BodyPipe(foo())
+        b = bodypipe(foo())
         assert b.consumed
         assert list(b) == [
             BodyPart('one', ''),
@@ -67,12 +67,12 @@ class TestBodyPipe(object):
 
     def test_consume_not_set_for_streams(self):
         from StringIO import StringIO
-        b = BodyPipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
+        b = bodypipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
         assert not b.consumed
         assert list(b) == [BodyPart('foo', '')]
         assert b.consumed
 
-        b = BodyPipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
+        b = bodypipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
         assert not b.consumed
         b.consume()
         assert b.consumed
@@ -80,25 +80,25 @@ class TestBodyPipe(object):
 
     def test_set_consumed_does_not_read_from_stream(self):
         from StringIO import StringIO
-        b = BodyPipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
+        b = bodypipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
         assert not b.consumed
         b.consumed = True
         assert b.stream.read() == "3\r\nfoo\r\n0\r\n\r\n"
         assert not list(b)
 
     def test_wraps_BodyPart_properly(self):
-        b = BodyPipe(BodyPart('foo', 'bar'))
+        b = bodypipe(BodyPart('foo', 'bar'))
         assert b.consumed
         assert list(b) == [BodyPart('foo', 'bar')]
 
     def test_len_stream(self):
-        b = BodyPipe(['a', 'b', 'c'])
+        b = bodypipe(['a', 'b', 'c'])
         assert len(b) == 3
         assert b.consumed
 
     def test_len__nonstream(self):
         from StringIO import StringIO
-        b = BodyPipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
+        b = bodypipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
 
         assert len(b) == 1
         assert b.consumed
