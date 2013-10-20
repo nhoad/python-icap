@@ -1,8 +1,19 @@
-from collections import OrderedDict
+"""
+Class and functions related to reserialization of requests/responses.
+
+These are all to be considered private. You should not need to use them
+directly except for special circumstances.
+"""
+
+from collections import OrderedDict, namedtuple
 
 from werkzeug import http_date
 
 from .utils import dump_encapsulated_field
+
+
+# who could resist a class name like this?
+BodyPart = namedtuple('BodyPart', 'content header')
 
 
 class Serializer(object):
@@ -98,3 +109,94 @@ class Serializer(object):
 
         # TODO: remove all hop-by-hop headers
         # TODO: ensure required authorization headers are preserved
+
+
+def BodyPipe(source):
+    """Factory function that returns an instance of :class:`MemoryBodyPipe` or
+    :class:`StreamBodyPipe`, depending on the input.
+    """
+    if hasattr(source, 'readline') and hasattr(source, 'read'):
+        return StreamBodyPipe(source)
+    return MemoryBodyPipe(source or [])
+
+
+class MemoryBodyPipe(list):
+    """An iterator over in-memory objects, e.g. a list, a string,
+    or a generator.
+    """
+    def __init__(self, value):
+        self.consumed = True
+
+        if isinstance(value, str):
+            value = [BodyPart(value, '')]
+        elif isinstance(value, BodyPart):
+            value = [value]
+
+        try:
+            iter(value)
+        except TypeError:
+            raise
+        else:
+            chunks = []
+            for v in value:
+                if not isinstance(v, BodyPart):
+                    v = BodyPart(v, '')
+                chunks.append(v)
+            chunks = chunks
+
+        super(MemoryBodyPipe, self).__init__(chunks)
+
+
+class StreamBodyPipe(object):
+    """An iterator over a stream, e.g. StringIO or a file."""
+    def __init__(self, source):
+        self.chunks = []
+        self.consumed = False
+        self.stream = source
+
+    def __iter__(self):
+        chunks = self.chunks
+
+        if self.consumed:
+            for chunk in chunks:
+                yield chunk
+            return
+
+        while True:
+            line = self.stream.readline().strip()
+            try:
+                size, header = line.split(';', 1)
+            except ValueError:
+                size = line
+                header = ''
+
+            # needs support for trailers
+            size = int(size, 16)
+            if size:
+                # FIXME: non-crlf-endings
+                data = self.stream.read(size+2)  # +2 for CRLF
+                # FIXME: non-crlf-endings
+                chunk = BodyPart(data[:-2], header)
+                chunks.append(chunk)
+                yield chunk
+            else:
+                # end of stream, get rid of trailing newline
+                self.stream.readline()
+                self.consumed = True
+                return
+
+    def consume(self):
+        if not self.consumed:
+            for chunk in self:
+                pass
+            self.consumed = True
+        assert self.consumed
+
+    def __bool__(self):
+        self.consume()
+        return bool(self.chunks)
+
+    def __len__(self):
+        self.consume()
+        return len(self.chunks)
+

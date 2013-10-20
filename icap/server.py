@@ -6,8 +6,8 @@ import uuid
 from types import ClassType, TypeType
 from collections import defaultdict
 
-from .models import ICAPResponse, Session, HTTPMessage, StreamBodyPipe
-from .serializer import Serializer
+from .models import ICAPResponse, Session, HTTPMessage
+from .serialization import Serializer, StreamBodyPipe
 from .errors import abort, ICAPAbort, MalformedRequestError
 from .parsing import ICAPRequestParser
 

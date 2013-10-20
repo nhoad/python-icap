@@ -1,12 +1,10 @@
 import pytest
 
-from mock import MagicMock, call
-
 from icap import ICAPRequest, ICAPResponse, HeadersDict, RequestLine, StatusLine
-from icap.models import HTTPMessage, HTTPResponse, BodyPipe, BodyPart
+from icap.models import HTTPMessage
 from icap.parsing import HTTPMessageParser, ICAPRequestParser
-from icap.serializer import Serializer
 from icap.errors import MalformedRequestError, InvalidEncapsulatedHeadersError, ICAPAbort
+
 
 def data_string(req_line, path):
     parts = req_line, open('data/' + path).read()
@@ -281,65 +279,3 @@ class TestICAPResponse(object):
         s = ICAPResponse.from_error(ICAPAbort(204))
         s.headers = headers
         assert str(s) == 'ICAP/1.0 204 No modifications needed\r\nheader: value\r\n'
-
-
-class TestBodyPipe(object):
-    def test_consume_set_for_nonstreams(self):
-        b = BodyPipe([])
-        assert b.consumed
-        assert not list(b)
-
-        b = BodyPipe('blah')
-        assert b.consumed
-        assert list(b) == [BodyPart('blah', '')]
-
-        def foo():
-            yield "one"
-            yield "two"
-            yield "three"
-
-        b = BodyPipe(foo())
-        assert b.consumed
-        assert list(b) == [
-            BodyPart('one', ''),
-            BodyPart('two', ''),
-            BodyPart('three', ''),
-        ]
-
-    def test_consume_not_set_for_streams(self):
-        from StringIO import StringIO
-        b = BodyPipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
-        assert not b.consumed
-        assert list(b) == [BodyPart('foo', '')]
-        assert b.consumed
-
-        b = BodyPipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
-        assert not b.consumed
-        b.consume()
-        assert b.consumed
-        assert list(b) == [BodyPart('foo', '')]
-
-    def test_set_consumed_does_not_read_from_stream(self):
-        from StringIO import StringIO
-        b = BodyPipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
-        assert not b.consumed
-        b.consumed = True
-        assert b.stream.read() == "3\r\nfoo\r\n0\r\n\r\n"
-        assert not list(b)
-
-    def test_wraps_BodyPart_properly(self):
-        b = BodyPipe(BodyPart('foo', 'bar'))
-        assert b.consumed
-        assert list(b) == [BodyPart('foo', 'bar')]
-
-    def test_len_stream(self):
-        b = BodyPipe(['a', 'b', 'c'])
-        assert len(b) == 3
-        assert b.consumed
-
-    def test_len__nonstream(self):
-        from StringIO import StringIO
-        b = BodyPipe(StringIO("3\r\nfoo\r\n0\r\n\r\n"))
-
-        assert len(b) == 1
-        assert b.consumed
