@@ -7,6 +7,7 @@ from types import ClassType, TypeType
 from collections import defaultdict
 
 from .models import ICAPResponse, Session, HTTPMessage, StreamBodyPipe
+from .serializer import Serializer
 from .errors import abort, ICAPAbort, MalformedRequestError
 from .parsing import ICAPRequestParser
 
@@ -148,7 +149,9 @@ class Server(object):
             response = ICAPResponse.from_error(error)
             if should_close:
                 response.headers['Connection'] = 'close'
-            response.serialize_to_stream(f, self.is_tag(None))
+            s = Serializer(response, self.is_tag(None), is_options=False,
+                           should_close=should_close)
+            s.serialize_to_stream(f)
 
         while True:
             try:
@@ -182,10 +185,10 @@ class Server(object):
                 return
 
             if request.is_options:
-                self.handle_options(request, f, should_close=should_close)
+                response = self.handle_options(request)
             else:
                 try:
-                    self.handle_mod(request, f, should_close=should_close)
+                    response = self.handle_mod(request)
                 except ICAPAbort as e:
                     if request.has_body and isinstance(request.http.body, StreamBodyPipe):
                         request.http.body.consume()
@@ -194,15 +197,16 @@ class Server(object):
                     else:
                         response = ICAPResponse.from_error(e)
 
-                    if should_close:
-                        response.headers['Connection'] = 'close'
-                    response.serialize_to_stream(f, self.is_tag(request))
+            s = Serializer(
+                response, self.is_tag(request), is_options=request.is_options,
+                should_close=should_close)
+            s.serialize_to_stream(f)
 
             if should_close:
                 close()
                 return
 
-    def handle_mod(self, request, stream, should_close=False):
+    def handle_mod(self, request):
         request.session = Session.from_request(request)
 
         has_body = request.has_body
@@ -226,18 +230,15 @@ class Server(object):
             elif 'content-length' in http.headers:
                 del http.headers['content-length']
 
-        if should_close:
-            response.headers['Connection'] = 'close'
-        response.serialize_to_stream(stream, self.is_tag(request))
-
         # FIXME: if this service doesn't handle respmods, then this
         # would be a memory leak.
         if request.is_respmod:
             request.session.finished()
+        return response
 
-    def handle_options(self, request, stream, should_close=False):
+    def handle_options(self, request):
         """Handle an OPTIONS request."""
-        response = ICAPResponse(is_options=True)
+        response = ICAPResponse()
 
         uri = request.request_line.uri
         response.headers['Methods'] = 'RESPMOD' if uri.endswith('respmod') else 'REQMOD'
@@ -248,10 +249,7 @@ class Server(object):
         if extra_headers:
             response.headers.update(extra_headers)
 
-        if should_close:
-            response.headers['Connection'] = 'close'
-
-        response.serialize_to_stream(stream, self.is_tag(request))
+        return response
 
     def get_handler(self, request):
         import urlparse

@@ -2,7 +2,7 @@ import urlparse
 
 from collections import namedtuple, OrderedDict
 
-from werkzeug import http_date, cached_property
+from werkzeug import cached_property
 
 from .errors import (
     InvalidEncapsulatedHeadersError,
@@ -10,7 +10,6 @@ from .errors import (
     abort,
     response_codes)
 
-from .utils import dump_encapsulated_field
 from .parsing import ICAPRequestParser
 
 # who could resist a class name like this?
@@ -135,13 +134,9 @@ class ICAPRequest(ICAPMessage):
 
 
 class ICAPResponse(ICAPMessage):
-    def __init__(self, status_line=None, is_options=False, *args, **kwargs):
+    def __init__(self, status_line=None, *args, **kwargs):
         super(ICAPResponse, self).__init__(*args, **kwargs)
         self.status_line = status_line or StatusLine('ICAP/1.0', 200, 'OK')
-
-        # XXX: once the reserialization is moved out of this object, this can
-        # go.
-        self.is_options = is_options
 
     def __str__(self):
         return '\r\n'.join([' '.join(map(str, self.status_line)), str(self.headers)])
@@ -155,80 +150,6 @@ class ICAPResponse(ICAPMessage):
         message = response_codes[status_code]
         self = cls(StatusLine('ICAP/1.0', status_code, message))
         return self
-
-    def serialize_to_stream(self, stream, is_tag):
-        """Serialize the ICAP response and contained HTTP message to *stream*."""
-        self.set_required_headers(is_tag)
-
-        http_preamble = self.set_encapsulated_header()
-
-        if self.status_line.code != 200 or self.is_options:
-            stream.write(str(self))
-            stream.write('\r\n')
-            stream.flush()
-            return
-
-        # FIXME: need to serialize opt-body requests too.
-
-        stream.write(str(self))
-        stream.write('\r\n')
-        stream.write(http_preamble)
-
-        self.write_body(stream)
-
-    def set_required_headers(self, is_tag):
-        """Sets headers required for the ICAP response."""
-        self.headers['Date'] = http_date()
-        self.headers['ISTag'] = is_tag
-
-    def write_body(self, stream):
-        """Write out each chunk to the given stream."""
-        if not self.http.body:
-            stream.flush()
-            return
-
-        for chunk in self.http.body:
-            s = chunk.content
-            n = hex(len(s))[2:]  # strip off leading 0x
-
-            header = chunk.header.strip()
-            if header and header != 'ieof':
-                header = '%s; %s' % (n, header)
-            else:
-                header = n
-
-            stream.write(header+'\r\n')
-            stream.write(s+'\r\n')
-
-        stream.write('0\r\n\r\n')
-        stream.flush()
-
-    def set_encapsulated_header(self):
-        """Serialize the http message preamble, set the encapsulated header,
-        and return the serialized preamble.
-        """
-        if self.status_line.code != 200 or self.is_options:
-            encapsulated = OrderedDict([('null-body', 0)])
-            http_preamble = ''
-        else:
-            http = self.http
-            http_preamble = str(http) + '\r\n'
-
-            if http.is_request:
-                encapsulated = OrderedDict([('req-hdr', 0)])
-                body_key = 'req-body'
-            else:
-                encapsulated = OrderedDict([('res-hdr', 0)])
-                body_key = 'res-body'
-
-            if not http or not http.body:
-                body_key = 'null-body'
-
-            encapsulated[body_key] = len(http_preamble)
-
-        self.headers['Encapsulated'] = dump_encapsulated_field(encapsulated)
-
-        return http_preamble
 
 
 class HTTPMessage(object):
