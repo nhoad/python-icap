@@ -444,3 +444,26 @@ class TestServer(object):
         mock_request = MagicMock(is_reqmod=False)
         mock_request.request_line.uri = '/blarg/respmod'
         assert s.get_handler(mock_request)[0] == respmod
+
+    def test_discover_servers_default_to_gevent(self):
+        from gevent.server import StreamServer
+        s = Server()
+        s.discover_servers()
+        assert s.server_class == StreamServer
+
+    def test_discover_servers_fallback(self):
+        with patch('gevent.server.StreamServer', None):
+            s = Server()
+            s.discover_servers()
+            assert s.server_class is not None
+
+    def test_discover_servers_complain_on_no_fallbacks(self):
+        with patch('gevent.server.StreamServer', None):
+            with patch('SocketServer.TCPServer', None):
+                s = Server()
+                try:
+                    s.discover_servers()
+                except RuntimeError:
+                    pass  # pragma: no cover
+                else:
+                    assert False, "Should complain when no fallbacks are found"

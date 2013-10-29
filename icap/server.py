@@ -84,7 +84,7 @@ class Hooks(dict):
 class Server(object):
     """Server, for handling requests on a given address."""
 
-    def __init__(self, server_class):
+    def __init__(self, server_class=None):
         """
         `server_class` - class used for accepting connections. Must support
         interface as defined by :func:`icap.server.Server.run`.
@@ -108,13 +108,20 @@ class Server(object):
         This method will block until the server is stopped.
         """
         self.running = True
+        if self.server_class is None:
+            self.discover_servers()
         self.server = self.server_class(server_address, self.handle_conn)
         self.server.serve_forever()
 
     def stop(self):
         """Stop the server, if it is running."""
         if self.running:
-            self.server.stop()
+            for method in KNOWN_STOP_METHODS:
+                stop = getattr(self.server, method, None)
+
+                if stop is not None:
+                    stop()
+                    break
 
         # FIXME: this should have a configurable timeout.
         while self.connections:
@@ -127,13 +134,16 @@ class Server(object):
         for key, value in self.handlers.iteritems():
             self.handlers[key] = sorted(value, key=lambda item: item[0])
 
-    def handle_conn(self, connection, addr):
+    def handle_conn(self, connection, addr, server=None):
         """Handle a single connection. May handle many requests.
 
         `connection` - the socket-(like) object connection to the client. Must
         support both `makefile` and `close` operations.
 
         `addr` - tuple of the client address and connected port.
+
+        `server` - `self.server` if you're using something like
+        :cls:`SocketServer.TCPServer`. None otherwise.
         """
         self.connections.append(connection)
 
@@ -327,3 +337,39 @@ class Server(object):
             return handler
 
         return inner
+
+    def discover_servers(self):
+        """In order of best to worst, try to find a suitable socket server to
+        use.
+
+        Only used if a server class was not passed in when Server instance was
+        created.
+        """
+        for module, server in KNOWN_SERVERS:
+            try:
+                module = __import__(module, fromlist=[server])
+            except ImportError:
+                pass
+            else:
+                self.server_class = getattr(module, server, None)
+                if self.server_class is not None:
+                    log.info("Using %s for accepting connections.",
+                             self.server_class.__name__)
+                    return
+
+        if self.server_class is None:
+            raise RuntimeError(
+                "No supported socket servers could be found. Please install "
+                "one or pass a compatible socket server along when "
+                "instantiating a Server class.")
+
+
+KNOWN_SERVERS = [
+    ('gevent.server', 'StreamServer'),
+    ('SocketServer', 'TCPServer'),
+]
+
+KNOWN_STOP_METHODS = [
+    'stop',  # gevent
+    'shutdown',  # SocketServer
+]
