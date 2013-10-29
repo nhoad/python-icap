@@ -7,6 +7,7 @@ import uuid
 from types import ClassType, TypeType
 from collections import defaultdict
 
+from .criteria import AlwaysCriteria
 from .models import ICAPResponse, Session, HTTPMessage
 from .serialization import Serializer, StreamBodyPipe
 from .errors import abort, ICAPAbort, MalformedRequestError
@@ -302,7 +303,9 @@ class Server(object):
             assert request.http.body.consumed
             return request.http
 
-    def handler(self, criteria, name='', raw=False):
+    def handler(self, criteria=None, name='', raw=False):
+        criteria = criteria or AlwaysCriteria()
+
         def inner(handler):
             if isinstance(handler, (ClassType, TypeType)):
                 handler = handler()

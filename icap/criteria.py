@@ -60,3 +60,16 @@ class DomainCriteria(RegexCriteria):
 
         r = bool(self.regex.match(headers.get('Host', '')))
         return r
+
+
+class AlwaysCriteria(BaseCriteria):
+    """Criteria that matches 100% of the time.
+
+    If you want to use this, just decorate a handler with
+    :func:`icap.server.Server.handler` without any arguments.
+
+    """
+    priority = 5
+
+    def __call__(self, request):
+        return True
