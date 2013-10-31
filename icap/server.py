@@ -288,7 +288,9 @@ class Server(object):
                 key = '/respmod'
             services = self.handlers.get(key, [])
 
-        handler = None
+        if not services:
+            abort(404)
+
         for criteria, handler, raw in services:
             if criteria(request):
                 return handler, raw

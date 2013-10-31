@@ -275,7 +275,7 @@ class TestServer(object):
         transaction = self.run_test(server, input_bytes, force_204=force_204)
 
         if force_204:
-            assert '204 No modifications needed' in transaction
+            assert '404 ICAP Service not found' in transaction
         else:
             assert '200 OK' in transaction
 
