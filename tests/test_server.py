@@ -247,6 +247,26 @@ class TestServer(object):
         print s
         assert expected_message in s
 
+    @pytest.mark.parametrize('is_reqmod', [False, True])
+    def test_poor_matching_uris_returns_405(self, is_reqmod):
+        if is_reqmod:
+            path = 'request_with_bad_resource.request'
+        else:
+            path = 'icap_request_with_two_header_sets_bad_resource.request'
+        input_bytes = data_string('', path)
+        socket = MagicMock()
+        fake_stream = StringIO(input_bytes)
+        socket.makefile.return_value = fake_stream
+        fake_stream.close = lambda: None
+
+        server = Server(None)
+        server.handle_conn(socket, MagicMock())
+
+        s = fake_stream.getvalue()
+
+        print s
+        assert '405 Method not allowed for service' in s
+
     @pytest.mark.parametrize('force_204', [True, False])
     def test_handle_conn__no_handler(self, force_204):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')

@@ -1,4 +1,5 @@
 import logging
+import re
 import socket
 import time
 import urlparse
@@ -194,6 +195,16 @@ class Server(object):
 
             if not request.request_line.version.endswith('/1.0'):
                 respond_with_error(505, should_close=should_close)
+                return
+
+            url = urlparse.urlparse(request.request_line.uri)
+            resource = url.path.lower()
+
+            invalid_reqmod = (request.is_reqmod and not re.match('/reqmod/?$', resource))
+            invalid_respmod = (request.is_respmod and not re.match('/respmod/?$', resource))
+
+            if not request.is_options and (invalid_reqmod or invalid_respmod):
+                respond_with_error(405, should_close=should_close)
                 return
 
             if request.is_options:

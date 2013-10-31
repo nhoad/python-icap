@@ -114,7 +114,7 @@ def test_icap_parsing_complex():
 
     child = m.http
 
-    assert ' '.join(m.request_line) == 'RESPMOD icap://icap.example.org/satisf ICAP/1.0'
+    assert ' '.join(m.request_line) == 'RESPMOD icap://icap.example.org/respmod ICAP/1.0'
     assert ' '.join(child.request_line) == 'GET /origin-resource HTTP/1.1'
     assert ' '.join(map(str, child.status_line)) == 'HTTP/1.1 200 OK'
 
