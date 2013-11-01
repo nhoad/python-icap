@@ -58,13 +58,13 @@ class Serializer(object):
 
         for chunk in self.response.http.body:
             s = chunk.content
-            n = hex(len(s))[2:]  # strip off leading 0x
+            n = len(s)
 
             header = chunk.header.strip()
             if header and header != 'ieof':
-                header = '%s; %s' % (n, header)
+                header = '%x; %s' % (n, header)
             else:
-                header = n
+                header = '%x' % n
 
             stream.write(header+'\r\n')
             stream.write(s+'\r\n')
