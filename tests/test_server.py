@@ -267,15 +267,23 @@ class TestServer(object):
         print s
         assert '405 Method Not Allowed For Service' in s
 
-    @pytest.mark.parametrize('force_204', [True, False])
-    def test_handle_conn__no_handler(self, force_204):
+    @pytest.mark.parametrize(('force_204', 'strict_when_missing_service'), [
+        (False, False),
+        (False, True),
+        (True, False),
+        (True, True),
+    ])
+    def test_handle_conn__no_handler(self, force_204, strict_when_missing_service):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
-        server = Server(None)
+        server = Server(strict_when_missing_service=strict_when_missing_service)
         transaction = self.run_test(server, input_bytes, force_204=force_204)
 
         if force_204:
-            assert '404 ICAP Service Not Found' in transaction
+            if strict_when_missing_service:
+                assert '404 ICAP Service Not Found' in transaction
+            else:
+                assert '204 No Modifications Needed' in transaction
         else:
             assert '200 OK' in transaction
 

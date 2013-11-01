@@ -85,17 +85,25 @@ class Hooks(dict):
 class Server(object):
     """Server, for handling requests on a given address."""
 
-    def __init__(self, server_class=None):
+    def __init__(self, server_class=None, strict_when_missing_service=False):
         """
         `server_class` - class used for accepting connections. Must support
         interface as defined by :func:`icap.server.Server.run`.
 
+        `strict_when_missing_service` - Decide how to respond when no no
+        internal services were found matching the given URI of a request (e.g.
+        /respmod when the server only supports reqmods). If True, then respond
+        with a 404, as decreed by RFC3507. Otherwise (by default), respond with
+        204/200. This is useful when the client doesn't handle a 404 very well,
+        but it is an indication that the client may be sending more traffic to
+        the ICAP server than it should.
         """
         self.server_class = server_class
         self.running = True
         self.handlers = defaultdict(list)
         self.hooks = Hooks()
         self.connections = []
+        self.strict_when_missing_service = strict_when_missing_service
 
         fallback_is_tag = uuid.uuid4().hex
 
@@ -289,7 +297,11 @@ class Server(object):
             services = self.handlers.get(key, [])
 
         if not services:
-            abort(404)
+            # RFC3507 says we should abort with 404 if there are no handlers at
+            # a given resource - this is fine except when the client (Squid, in
+            # this case) relays ICAP 404 responses to the client as internal
+            # errors.
+            abort(404 if self.strict_when_missing_service else 204)
 
         for criteria, handler, raw in services:
             if criteria(request):
