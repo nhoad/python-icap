@@ -1,3 +1,4 @@
+import fnmatch
 import functools
 import re
 import urlparse
@@ -30,7 +31,7 @@ class RegexCriteria(BaseCriteria):
         return bool(self.regex.match(url))
 
 
-class DomainCriteria(RegexCriteria):
+class DomainCriteria(BaseCriteria):
     """Criteria that processes requests based on the domain.
 
     Supports globbing, e.g. "*google.com" matches "www.google.com", and
@@ -39,10 +40,8 @@ class DomainCriteria(RegexCriteria):
     priority = 2
 
     def __init__(self, *domains):
-        domains_as_regexes = (s.replace('*', '.*').replace('?', '.')
-                              for s in domains)
-        domain_re = '^(%s)$' % '|'.join(domains_as_regexes)
-        super(DomainCriteria, self).__init__(domain_re)
+        super(DomainCriteria, self).__init__()
+        self.domains = domains
 
     def __call__(self, request):
         if request.is_reqmod:
@@ -50,8 +49,10 @@ class DomainCriteria(RegexCriteria):
         else:
             headers = request.http.request_headers
 
-        r = bool(self.regex.match(headers.get('Host', '')))
-        return r
+        host = headers.get('Host', '')
+        match = functools.partial(fnmatch.fnmatch, host)
+
+        return any(match(pattern) for pattern in self.domains)
 
 
 class AlwaysCriteria(BaseCriteria):
