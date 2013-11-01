@@ -177,7 +177,7 @@ class TestServer(object):
 
         transaction = self.run_test(server, input_bytes)
 
-        assert "500 Server error" in transaction
+        assert "500 Internal Server Error" in transaction
         assert transaction.count("This is data that was returned by an origin server") == 1
 
     def test_handle_conn__response_for_respmod(self):
@@ -217,7 +217,7 @@ class TestServer(object):
 
         transaction = self.run_test(server, input_bytes)
 
-        assert '500 Server error' in transaction
+        assert '500 Internal Server Error' in transaction
 
     def test_handle_conn__handles_socket_errors(self):
         import socket
@@ -228,10 +228,10 @@ class TestServer(object):
         assert s.mock_calls[-1] == call.close()
 
     @pytest.mark.parametrize(('input_bytes', 'expected_message'), [
-        ('OPTIONS / HTTP/1.0\r\n\r\n', '400 Bad request'),  # HTTP is a no-no
-        ('OPTIONS / ICAP/1.1\r\n\r\n', '505 ICAP version not supported'),  # invalid version
-        ('OPTIONS /\r\n\r\n', '400 Bad request'),  # malformed
-        ('asdf / ICAP/1.0\r\n\r\n', '501 Method not implemented'),
+        ('OPTIONS / HTTP/1.0\r\n\r\n', '400 Bad Request'),  # HTTP is a no-no
+        ('OPTIONS / ICAP/1.1\r\n\r\n', '505 ICAP Version Not Supported'),  # invalid version
+        ('OPTIONS /\r\n\r\n', '400 Bad Request'),  # malformed
+        ('asdf / ICAP/1.0\r\n\r\n', '501 Method Not Implemented'),
     ])
     def test_non_icap_request_returns_400(self, input_bytes, expected_message):
         socket = MagicMock()
@@ -265,7 +265,7 @@ class TestServer(object):
         s = fake_stream.getvalue()
 
         print s
-        assert '405 Method not allowed for service' in s
+        assert '405 Method Not Allowed For Service' in s
 
     @pytest.mark.parametrize('force_204', [True, False])
     def test_handle_conn__no_handler(self, force_204):
@@ -275,7 +275,7 @@ class TestServer(object):
         transaction = self.run_test(server, input_bytes, force_204=force_204)
 
         if force_204:
-            assert '404 ICAP Service not found' in transaction
+            assert '404 ICAP Service Not Found' in transaction
         else:
             assert '200 OK' in transaction
 

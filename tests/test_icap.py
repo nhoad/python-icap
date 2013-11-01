@@ -270,7 +270,7 @@ class TestICAPResponse(object):
         assert str(s) == 'ICAP/1.0 200 OK\r\n'
 
         s = ICAPResponse.from_error(ICAPAbort(204))
-        assert str(s) == 'ICAP/1.0 204 No modifications needed\r\n'
+        assert str(s) == 'ICAP/1.0 204 No Modifications Needed\r\n'
 
         headers = HeadersDict([
             ('header', 'value'),
@@ -278,4 +278,4 @@ class TestICAPResponse(object):
 
         s = ICAPResponse.from_error(ICAPAbort(204))
         s.headers = headers
-        assert str(s) == 'ICAP/1.0 204 No modifications needed\r\nheader: value\r\n'
+        assert str(s) == 'ICAP/1.0 204 No Modifications Needed\r\nheader: value\r\n'
