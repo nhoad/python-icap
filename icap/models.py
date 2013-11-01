@@ -117,7 +117,8 @@ class ICAPRequest(ICAPMessage):
 
     @cached_property
     def allow_204(self):
-        return '204' in self.headers.get('allow', '')
+        # FIXME: this should parse the list.
+        return ('204' in self.headers.get('allow', '') or 'preview' in self.headers)
 
     @cached_property
     def is_reqmod(self):
