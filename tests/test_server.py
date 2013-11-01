@@ -387,7 +387,10 @@ class TestServer(object):
         def reqmod(self, *args):
             pass  # pragma: no cover
 
-        assert s.get_handler(MagicMock())[0] == reqmod
+        request = MagicMock(http='http')
+        request.request_line.uri = '/reqmod'
+
+        assert s.get_handler(request)[0] == reqmod
 
     def test_handle_respmod(self):
         s = Server(None)
@@ -396,7 +399,10 @@ class TestServer(object):
         def respmod(self, *args):
             pass  # pragma: no cover
 
-        assert s.get_handler(MagicMock(is_reqmod=False))[0] == respmod
+        request = MagicMock(is_reqmod=False, http='http')
+        request.request_line.uri = '/respmod'
+
+        assert s.get_handler(request)[0] == respmod
 
     def test_handle_both(self):
         s = Server(None)
@@ -409,8 +415,13 @@ class TestServer(object):
         def reqmod(self, *args):
             pass  # pragma: no cover
 
-        assert s.get_handler(MagicMock(is_reqmod=False))[0] == respmod
-        assert s.get_handler(MagicMock(is_reqmod=True))[0] == reqmod
+        request = MagicMock(is_reqmod=False, http='http')
+        request.request_line.uri = '/respmod'
+        assert s.get_handler(request)[0] == respmod
+
+        request = MagicMock(http='http')
+        request.request_line.uri = '/reqmod'
+        assert s.get_handler(request)[0] == reqmod
 
     def test_handle_class(self):
         s = Server(None)
@@ -424,8 +435,14 @@ class TestServer(object):
                 pass  # pragma: no cover
 
         print s.handlers
-        assert s.get_handler(MagicMock())[0] == s.handlers['/reqmod'][0][1]
-        assert s.get_handler(MagicMock(is_reqmod=False))[0] == s.handlers['/respmod'][0][1]
+
+        reqmod = MagicMock(http='http')
+        respmod = MagicMock(is_reqmod=False, http='http')
+        reqmod.request_line.uri = '/reqmod'
+        respmod.request_line.uri = '/respmod'
+
+        assert s.get_handler(reqmod)[0] == s.handlers['/reqmod'][0][1]
+        assert s.get_handler(respmod)[0] == s.handlers['/respmod'][0][1]
 
     def test_handle_raw(self):
         s = Server(None)
@@ -434,6 +451,8 @@ class TestServer(object):
 
         reqmod = MagicMock(http='http')
         respmod = MagicMock(is_reqmod=False, http='http')
+        reqmod.request_line.uri = '/reqmod'
+        respmod.request_line.uri = '/respmod'
 
         @s.handler(lambda *args: True, raw=True)
         class Foo(object):

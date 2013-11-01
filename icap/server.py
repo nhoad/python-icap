@@ -290,13 +290,6 @@ class Server(object):
         services = self.handlers.get(path)
 
         if not services:
-            if request.is_reqmod:
-                key = '/reqmod'
-            else:
-                key = '/respmod'
-            services = self.handlers.get(key, [])
-
-        if not services:
             # RFC3507 says we should abort with 404 if there are no handlers at
             # a given resource - this is fine except when the client (Squid, in
             # this case) relays ICAP 404 responses to the client as internal
