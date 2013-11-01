@@ -1,7 +1,11 @@
+import pytest
+
 from mock import MagicMock, call
 
-from icap import ICAPResponse, HTTPResponse
-from icap.serialization import Serializer, bodypipe, BodyPart
+from icap import ICAPResponse, HTTPResponse, HeadersDict
+from icap.serialization import (
+    Serializer, bodypipe, BodyPart, response_headers,
+    options_response_headers, remove_invalid_headers)
 
 
 class TestSerializer(object):
@@ -102,3 +106,31 @@ class TestBodyPipe(object):
 
         assert len(b) == 1
         assert b.consumed
+
+
+@pytest.mark.parametrize('is_options', [True, False])
+def test_remove_invalid_headers(is_options):
+    valid_response_headers = response_headers.pattern[1:-1].split('|')
+    valid_options_response_headers = options_response_headers.pattern[1:-1].split('|')
+
+    keys = list(valid_response_headers)
+    if is_options:
+        keys.extend(valid_options_response_headers)
+
+    keys.append('x-foo')
+    valid_keys = sorted(keys)
+
+    keys.append('bad-key')
+    keys.append('transfer-encoding')
+    keys.sort()
+
+    headers = HeadersDict([(key, 'foo') for key in keys])
+
+    remove_invalid_headers(headers, is_options)
+
+    print sorted(headers)
+    print sorted(valid_keys)
+
+    assert 'bad-key' not in headers
+    assert 'transfer-encoding' not in headers
+    assert sorted(headers) == valid_keys

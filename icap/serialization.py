@@ -5,6 +5,8 @@ These are all to be considered private. You should not need to use them
 directly except for special circumstances.
 """
 
+import re
+
 from collections import OrderedDict, namedtuple
 
 from werkzeug import http_date
@@ -14,6 +16,51 @@ from .utils import dump_encapsulated_field
 
 # who could resist a class name like this?
 BodyPart = namedtuple('BodyPart', 'content header')
+
+response_headers = re.compile('(%s)' % '|'.join([
+    'cache-control',
+    'connection',
+    'date',
+    'encapsulated',
+    'expires',
+    'istag',
+    'pragma',
+    'server',
+    'trailer',
+    'upgrade',
+]))
+
+options_response_headers = re.compile('(%s)' % '|'.join([
+    'allow',
+    'max-connections',
+    'methods',
+    'opt-body-type',
+    'options-ttl',
+    'preview',
+    'service',
+    'service-id',
+    'transfer-complete',
+    'transfer-ignore',
+    'transfer-preview',
+]))
+
+
+def remove_invalid_headers(headers, is_options=False):
+    invalid = set()
+    opt_match = options_response_headers.match
+    match = response_headers.match
+
+    for header in headers:
+        if header.startswith('x-'):
+            continue
+        elif is_options and opt_match(header):
+            continue
+        elif match(header):
+            continue
+        invalid.add(header)
+
+    for header in invalid:
+        del headers[header]
 
 
 class Serializer(object):
@@ -33,6 +80,7 @@ class Serializer(object):
     def serialize_to_stream(self, stream):
         """Serialize the ICAP response and contained HTTP message to *stream*."""
         self.set_required_headers()
+        remove_invalid_headers(self.response.headers, is_options=self.is_options)
 
         http_preamble = self.set_encapsulated_header()
 
