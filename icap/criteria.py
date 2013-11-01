@@ -1,14 +1,6 @@
 import functools
 import re
-import types
 import urlparse
-
-function_types = (
-    types.FunctionType,
-    types.MethodType,
-    types.BuiltinFunctionType,
-    types.BuiltinMethodType,
-)
 
 
 @functools.total_ordering
