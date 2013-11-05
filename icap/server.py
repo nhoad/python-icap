@@ -2,7 +2,6 @@ import logging
 import re
 import socket
 import time
-import urlparse
 import uuid
 
 from types import ClassType, TypeType
@@ -205,7 +204,7 @@ class Server(object):
                 respond_with_error(505, should_close=should_close)
                 return
 
-            url = urlparse.urlparse(request.request_line.uri)
+            url = request.request_line.uri
             resource = url.path.lower()
 
             invalid_reqmod = (request.is_reqmod and not re.match('/reqmod/?$', resource))
@@ -273,8 +272,8 @@ class Server(object):
         """Handle an OPTIONS request."""
         response = ICAPResponse()
 
-        uri = request.request_line.uri
-        response.headers['Methods'] = 'RESPMOD' if uri.endswith('respmod') else 'REQMOD'
+        path = request.request_line.uri.path
+        response.headers['Methods'] = 'RESPMOD' if path.endswith('respmod') else 'REQMOD'
         response.headers['Allow'] = '204'
 
         extra_headers = self.hooks['options_headers']()
@@ -285,7 +284,7 @@ class Server(object):
         return response
 
     def get_handler(self, request):
-        uri = urlparse.urlparse(request.request_line.uri)
+        uri = request.request_line.uri
         path = uri.path
         services = self.handlers.get(path)
 

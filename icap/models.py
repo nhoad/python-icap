@@ -1,4 +1,5 @@
-import urlparse
+from urllib import urlencode
+from urlparse import parse_qs, urlparse
 
 from collections import namedtuple, OrderedDict
 
@@ -13,8 +14,66 @@ from .errors import (
 from .parsing import ICAPRequestParser
 from .serialization import bodypipe, StreamBodyPipe, MemoryBodyPipe
 
-RequestLine = namedtuple('RequestLine', 'method uri version')
-StatusLine = namedtuple('StatusLine', 'version code reason')
+
+class RequestLine(namedtuple('RequestLine', 'method uri version')):
+    """Parsed request line, e.g. GET / HTTP/1.1, or
+    REQMOD / ICAP/1.1.
+
+    Available attributes are method, uri, version and query.
+
+    This class is purposefully directly immutable. You may modify the
+    attributes on the `uri` attribute all you want; they will be reserialized.
+
+    You can replace attributes by constructing new instances from the old ones,
+    like a namedtuple. For example:
+
+    >>> RequestLine('GET', '/', 'HTTP/1.1')._replace(method='POST')
+    RequestLine(method='POST', uri=ParseResult(scheme='', netloc='', path='/', params='', query={}, fragment=''), version='HTTP/1.1')
+
+    But generally, try to restrict yourself to query parameter changes only,
+    which don't involve this kludgery. It's generally poor form to change HTTP
+    versions, and changing the method is very impolite.
+    """
+    __slots__ = ()
+
+    # we're subclassing a tuple here, __new__ is necessary.
+    def __new__(self, method, uri, version):
+        uri = urlparse(uri)
+        uri = uri._replace(query=parse_qs(uri.query))
+        return super(RequestLine, self).__new__(self, method, uri, version)
+
+    def __str__(self):
+        method, uri, version = self
+        uri = uri._replace(query=urlencode(uri.query, doseq=True)).geturl()
+        return ' '.join([method, uri, version])
+
+    @property
+    def query(self):
+        return self.uri.query
+
+
+class StatusLine(namedtuple('StatusLine', 'version code reason')):
+    """Parsed status line, e.g. HTTP/1.1 200 OK or ICAP/1.1 200 OK.
+
+    This class is purposefully directly immutable.
+    attributes on the `uri` attribute all you want; they will be reserialized.
+
+    You can replace attributes by constructing new instances from the old ones,
+    like a namedtuple. For example:
+
+    >>> StatusLine('HTTP/1.1', '200', 'OK')._replace(version='ICAP/1.1')
+    StatusLine(version='ICAP/1.1', code=200, reason='OK')
+
+    But generally, try not to. It's generally poor form to change these sorts
+    of things.
+    """
+    __slots__ = ()
+
+    def __new__(self, version, code, reason):
+        return super(StatusLine, self).__new__(self, version, int(code), reason)
+
+    def __str__(self):
+        return ' '.join(map(str, self))
 
 
 class HeadersDict(OrderedDict):
@@ -177,7 +236,7 @@ class HTTPMessage(object):
         else:
             field = self.status_line
 
-        return '\r\n'.join([' '.join(map(str, field)), str(self.headers)])
+        return '\r\n'.join([str(field), str(self.headers)])
 
     @cached_property
     def is_request(self):
@@ -241,10 +300,8 @@ class Session(dict):
 
     def populate(self, request):
         if isinstance(request.http, HTTPResponse):
-            url = request.http.request_headers.get('Host', '') + request.http.request_line.uri
-            url = urlparse.urlparse(url)
+            url = request.http.request_line.uri
         else:
-            url = request.http.headers.get('Host', '') + request.http.request_line.uri
-            url = urlparse.urlparse(url)
+            url = request.http.request_line.uri
 
         self['url'] = url

@@ -388,7 +388,7 @@ class TestServer(object):
             pass  # pragma: no cover
 
         request = MagicMock(http='http')
-        request.request_line.uri = '/reqmod'
+        request.request_line.uri.path = '/reqmod'
 
         assert s.get_handler(request)[0] == reqmod
 
@@ -400,7 +400,7 @@ class TestServer(object):
             pass  # pragma: no cover
 
         request = MagicMock(is_reqmod=False, http='http')
-        request.request_line.uri = '/respmod'
+        request.request_line.uri.path = '/respmod'
 
         assert s.get_handler(request)[0] == respmod
 
@@ -416,11 +416,11 @@ class TestServer(object):
             pass  # pragma: no cover
 
         request = MagicMock(is_reqmod=False, http='http')
-        request.request_line.uri = '/respmod'
+        request.request_line.uri.path = '/respmod'
         assert s.get_handler(request)[0] == respmod
 
         request = MagicMock(http='http')
-        request.request_line.uri = '/reqmod'
+        request.request_line.uri.path = '/reqmod'
         assert s.get_handler(request)[0] == reqmod
 
     def test_handle_class(self):
@@ -438,8 +438,8 @@ class TestServer(object):
 
         reqmod = MagicMock(http='http')
         respmod = MagicMock(is_reqmod=False, http='http')
-        reqmod.request_line.uri = '/reqmod'
-        respmod.request_line.uri = '/respmod'
+        reqmod.request_line.uri.path = '/reqmod'
+        respmod.request_line.uri.path = '/respmod'
 
         assert s.get_handler(reqmod)[0] == s.handlers['/reqmod'][0][1]
         assert s.get_handler(respmod)[0] == s.handlers['/respmod'][0][1]
@@ -451,8 +451,8 @@ class TestServer(object):
 
         reqmod = MagicMock(http='http')
         respmod = MagicMock(is_reqmod=False, http='http')
-        reqmod.request_line.uri = '/reqmod'
-        respmod.request_line.uri = '/respmod'
+        reqmod.request_line.uri.path = '/reqmod'
+        respmod.request_line.uri.path = '/respmod'
 
         @s.handler(lambda *args: True, raw=True)
         class Foo(object):
@@ -485,11 +485,11 @@ class TestServer(object):
         print s.handlers.keys()
 
         mock_request = MagicMock(is_reqmod=True)
-        mock_request.request_line.uri = '/lamps/reqmod'
+        mock_request.request_line.uri.path = '/lamps/reqmod'
         assert s.get_handler(mock_request)[0] == reqmod
 
         mock_request = MagicMock(is_reqmod=False)
-        mock_request.request_line.uri = '/blarg/respmod'
+        mock_request.request_line.uri.path = '/blarg/respmod'
         assert s.get_handler(mock_request)[0] == respmod
 
     def test_discover_servers_default_to_gevent(self):

@@ -1,4 +1,3 @@
-
 from cStringIO import StringIO
 
 from werkzeug import cached_property
@@ -218,7 +217,7 @@ def parse_start_line(sline):
     if method.upper().startswith(('HTTP', 'ICAP')):
         version, code, reason = parts
         try:
-            return StatusLine(version.upper(), int(code), reason)
+            return StatusLine(version.upper(), code, reason)
         except ValueError:
             raise MalformedRequestError
     else:
