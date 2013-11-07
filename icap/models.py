@@ -9,7 +9,7 @@ from .errors import (
     InvalidEncapsulatedHeadersError,
     MalformedRequestError,
     abort,
-    response_codes,
+    icap_response_codes,
     http_response_codes)
 
 from .parsing import ICAPRequestParser
@@ -77,7 +77,7 @@ class StatusLine(namedtuple('StatusLine', 'version code reason')):
         elif version.startswith('HTTP'):
             reason = http_response_codes[code]
         else:
-            reason = response_codes[code]
+            reason = icap_response_codes[code]
 
         return super(StatusLine, self).__new__(self, version, code, reason)
 
@@ -215,7 +215,7 @@ class ICAPResponse(ICAPMessage):
             status_code = error
         else:
             status_code = error.status_code
-        message = response_codes[status_code]
+        message = icap_response_codes[status_code]
         self = cls(StatusLine('ICAP/1.0', status_code, message))
         return self
 

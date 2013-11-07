@@ -42,8 +42,8 @@ http_response_codes = {
     505: 'HTTP Version Not Supported',
 }
 
-response_codes = dict(http_response_codes)
-response_codes.update({
+icap_response_codes = dict(http_response_codes)
+icap_response_codes.update({
     204: 'No Modifications Needed',
     404: 'ICAP Service Not Found',
     405: 'Method Not Allowed For Service',
@@ -73,8 +73,8 @@ class ICAPAbort(Exception):
     """
     def __init__(self, status_code, message=None):
         if message is None:
-            message = "'%d %s' was raised" % (status_code, response_codes.get(
-                status_code, str(status_code)))
+            message = "'%d %s' was raised" % (
+                status_code, icap_response_codes[status_code])
 
         super(ICAPAbort, self).__init__(message)
         self.status_code = status_code
