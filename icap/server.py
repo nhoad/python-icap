@@ -1,5 +1,6 @@
 import logging
 import re
+import signal
 import socket
 import time
 import uuid
@@ -110,30 +111,70 @@ class Server(object):
         def is_tag(request):
             return fallback_is_tag
 
-    def run(self, server_address=('0.0.0.0', 1334)):
-        """Run the given server class with `server_address` and ``self.handle_conn``.
+    def run(self, server_address=('0.0.0.0', 1334), install_signal_handlers=True):
+        """Run the given server class with ``server_address`` and
+        ``self.handle_conn``, blocking until the server is stopped.
 
-        This method will block until the server is stopped.
+        ``server_class`` will be started like so::
+
+            server = self.server_class(server_address, self.handle_conn)
+            server.serve_forever()
         """
-        self.running = True
+
+        if install_signal_handlers:
+            self.install_signal_handlers()
+
         if self.server_class is None:
             self.discover_servers()
+        self.running = True
         self.server = self.server_class(server_address, self.handle_conn)
         self.server.serve_forever()
 
     def stop(self):
-        """Stop the server, if it is running."""
+        """Stop the server if it is running.
+
+        This method will block until there are no open connections.
+        """
+
         if self.running:
+            self.running = False
             for method in KNOWN_STOP_METHODS:
                 stop = getattr(self.server, method, None)
 
                 if stop is not None:
                     stop()
                     break
+            else:
+                raise RuntimeError("Could not figure out how to stop server!")
 
-        # FIXME: this should have a configurable timeout.
-        while self.connections:
-            time.sleep(1)
+            # FIXME: this should have a configurable timeout.
+            while self.connections:
+                time.sleep(1)
+
+    def install_signal_handlers(self):
+        """Install signal handlers for SIGTERM, SIGINT and SIGBREAK if you're
+        on Windows.
+
+        See `~handle_signal` for details on how signals are handled.
+        """
+
+        signal.signal(signal.SIGTERM, self.handle_signal)
+
+        # Windows
+        if hasattr(signal, "SIGBREAK"):
+            signal.signal(signal.SIGBREAK, self.handle_signal)
+
+        if signal.getsignal(signal.SIGINT) == signal.default_int_handler:
+            signal.signal(signal.SIGINT, self.handle_signal)
+
+    def handle_signal(self, signal, frame):
+        """Handler for a given signal.
+
+        Calls the 'signal' hook with the signal and frame, calls
+        `~icap.server.Server.stop`.
+        """
+        self.hooks['signal'](signal, frame)
+        self.stop()
 
     def is_tag(self, request):
         return '"%s"' % self.hooks['is_tag'](request)[:32]
