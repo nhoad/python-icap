@@ -8,7 +8,7 @@ from types import ClassType, TypeType
 from collections import defaultdict
 
 from .criteria import AlwaysCriteria
-from .models import ICAPResponse, Session, HTTPMessage
+from .models import ICAPResponse, Session, HTTPMessage, StatusLine
 from .serialization import Serializer, StreamBodyPipe
 from .errors import abort, ICAPAbort, MalformedRequestError
 from .parsing import ICAPRequestParser
@@ -269,10 +269,25 @@ class Server(object):
         return response
 
     def handle_options(self, request):
-        """Handle an OPTIONS request."""
+        """Handle an OPTIONS request, returning the ICAPResponse object to
+        serialize.
+
+        If a request is received for a resource that is not handled, returns
+        an ICAP 404.
+
+        Will call the 'options_headers' hook, which is expected to return a
+        ``dict`` of headers to append to the ICAP response headers.
+
+        """
+        path = request.request_line.uri.path
+
+        try:
+            self.get_handler(request)
+        except ICAPAbort as e:
+            return ICAPResponse(StatusLine('ICAP/1.0', 404))
+
         response = ICAPResponse()
 
-        path = request.request_line.uri.path
         response.headers['Methods'] = 'RESPMOD' if path.endswith('respmod') else 'REQMOD'
         response.headers['Allow'] = '204'
 

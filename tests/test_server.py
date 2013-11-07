@@ -42,6 +42,25 @@ class TestServer(object):
         print 'actual', handlers
         assert handlers == [two, one, three]
 
+    def test_handle_conn__options_request_no_handlers(self):
+        input_bytes = data_string('', 'options_request.request')
+        socket = MagicMock()
+        fake_stream = StringIO(input_bytes)
+        socket.makefile.return_value = fake_stream
+        fake_stream.close = lambda: None
+
+        server = Server()
+        server.handle_conn(socket, MagicMock())
+
+        s = fake_stream.getvalue()
+
+        print s
+
+        assert 'ICAP/1.0 404 ICAP Service Not Found' in s
+        assert 'ISTag: ' in s
+        assert 'Date: ' in s
+        assert 'Encapsulated: ' in s
+
     def test_handle_conn__options_request(self):
         input_bytes = data_string('', 'options_request.request')
         socket = MagicMock()
@@ -49,7 +68,7 @@ class TestServer(object):
         socket.makefile.return_value = fake_stream
         fake_stream.close = lambda: None
 
-        server = Server(None)
+        server = self.dummy_server()
         server.handle_conn(socket, MagicMock())
 
         s = fake_stream.getvalue()
@@ -101,7 +120,8 @@ class TestServer(object):
         socket.makefile.return_value = fake_stream
         fake_stream.close = lambda: None
 
-        server = Server(None)
+        server = self.dummy_server()
+
         @server.hooks('options_headers')
         def options_headers():
             raise Exception('noooo')
@@ -119,7 +139,8 @@ class TestServer(object):
         socket.makefile.return_value = fake_stream
         fake_stream.close = lambda: None
 
-        server = Server(None)
+        server = self.dummy_server()
+
         @server.hooks('options_headers')
         def options_headers():
             return {
@@ -239,7 +260,7 @@ class TestServer(object):
         socket.makefile.return_value = fake_stream
         fake_stream.close = lambda: None
 
-        server = Server(None)
+        server = self.dummy_server()
         server.handle_conn(socket, MagicMock())
 
         s = fake_stream.getvalue()
@@ -348,6 +369,19 @@ class TestServer(object):
         assert "3\r\nfoo" in transaction
         assert "3\r\nbar" in transaction
         assert "3\r\nbaz\r\n0\r\n" in transaction
+
+    def dummy_server(self):
+        server = Server()
+
+        @server.handler()
+        def reqmod(request):
+            pass
+
+        @server.handler()
+        def respmod(request):
+            pass
+
+        return server
 
     def run_test(self, server, input_bytes, force_204=False,
                  assert_mutated=False, multi_chunk=False):
