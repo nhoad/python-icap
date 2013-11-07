@@ -1,11 +1,11 @@
-response_codes = {
+http_response_codes = {
     100: 'Continue',
     101: 'Switching Protocols',
     200: 'OK',
     201: 'Created',
     202: 'Accepted',
     203: 'Non-Authoritative Information',
-    204: 'No Modifications Needed',
+    204: 'No Content',
     205: 'Reset Content',
     206: 'Partial Content',
     300: 'Multiple Choices',
@@ -20,8 +20,8 @@ response_codes = {
     401: 'Unauthorized',
     402: 'Payment Required',
     403: 'Forbidden',
-    404: 'ICAP Service Not Found',
-    405: 'Method Not Allowed For Service',
+    404: 'Not Found',
+    405: 'Method Not Allowed',
     406: 'Not Acceptable',
     407: 'Proxy Authentication Required',
     408: 'Request Timeout',
@@ -34,14 +34,24 @@ response_codes = {
     415: 'Unsupported Media Type',
     416: 'Requested Range Not Satisfiable',
     417: 'Expectation Failed',
-    418: 'Bad composition',
     500: 'Internal Server Error',
-    501: 'Method Not Implemented',
+    501: 'Not Implemented',
     502: 'Bad Gateway',
-    503: 'Service Overloaded',
+    503: 'Service Unavailable',
     504: 'Gateway Timeout',
-    505: 'ICAP Version Not Supported',
+    505: 'HTTP Version Not Supported',
 }
+
+response_codes = dict(http_response_codes)
+response_codes.update({
+    204: 'No Modifications Needed',
+    404: 'ICAP Service Not Found',
+    405: 'Method Not Allowed For Service',
+    418: 'Bad Composition',
+    501: 'Method Not Implemented',
+    503: 'Service Overloaded',
+    505: 'ICAP Version Not Supported',
+})
 
 
 def abort(code):

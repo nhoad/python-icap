@@ -9,7 +9,8 @@ from .errors import (
     InvalidEncapsulatedHeadersError,
     MalformedRequestError,
     abort,
-    response_codes)
+    response_codes,
+    http_response_codes)
 
 from .parsing import ICAPRequestParser
 from .serialization import bodypipe, StreamBodyPipe, MemoryBodyPipe
@@ -69,8 +70,16 @@ class StatusLine(namedtuple('StatusLine', 'version code reason')):
     """
     __slots__ = ()
 
-    def __new__(self, version, code, reason):
-        return super(StatusLine, self).__new__(self, version, int(code), reason)
+    def __new__(self, version, code, *args):
+        code = int(code)
+        if args:
+            reason, = args
+        elif version.startswith('HTTP'):
+            reason = http_response_codes[code]
+        else:
+            reason = response_codes[code]
+
+        return super(StatusLine, self).__new__(self, version, code, reason)
 
     def __str__(self):
         return ' '.join(map(str, self))
