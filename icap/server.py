@@ -86,10 +86,10 @@ class Server(object):
 
     def __init__(self, server_class=None, strict_when_missing_service=False):
         """
-        `server_class` - class used for accepting connections. Must support
-        interface as defined by :func:`icap.server.Server.run`.
+        ``server_class`` - class used for accepting connections. Must support
+        interface as defined by `~icap.server.Server.run`.
 
-        `strict_when_missing_service` - Decide how to respond when no no
+        ``strict_when_missing_service`` - Decide how to respond when no
         internal services were found matching the given URI of a request (e.g.
         /respmod when the server only supports reqmods). If True, then respond
         with a 404, as decreed by RFC3507. Otherwise (by default), respond with
@@ -145,13 +145,13 @@ class Server(object):
     def handle_conn(self, connection, addr, server=None):
         """Handle a single connection. May handle many requests.
 
-        `connection` - the socket-(like) object connection to the client. Must
+        ``connection`` - the ``socket``-(like) object connection to the client. Must
         support both `makefile` and `close` operations.
 
-        `addr` - tuple of the client address and connected port.
+        ``addr`` - tuple of the client address and connected port.
 
-        `server` - `self.server` if you're using something like
-        :cls:`SocketServer.TCPServer`. None otherwise.
+        ``server`` - Will be ``self.server`` if you're using something like
+        :class:`SocketServer.TCPServer`. None otherwise.
         """
         self.connections.append(connection)
 

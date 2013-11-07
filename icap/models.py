@@ -28,6 +28,7 @@ class RequestLine(namedtuple('RequestLine', 'method uri version')):
     You can replace attributes by constructing new instances from the old ones,
     like a namedtuple. For example:
 
+    >>> from icap import RequestLine
     >>> RequestLine('GET', '/', 'HTTP/1.1')._replace(method='POST')
     RequestLine(method='POST', uri=ParseResult(scheme='', netloc='', path='/', params='', query={}, fragment=''), version='HTTP/1.1')
 
@@ -57,16 +58,24 @@ class StatusLine(namedtuple('StatusLine', 'version code reason')):
     """Parsed status line, e.g. HTTP/1.1 200 OK or ICAP/1.1 200 OK.
 
     This class is purposefully directly immutable.
-    attributes on the `uri` attribute all you want; they will be reserialized.
 
     You can replace attributes by constructing new instances from the old ones,
     like a namedtuple. For example:
 
+    >>> from icap import StatusLine
     >>> StatusLine('HTTP/1.1', '200', 'OK')._replace(version='ICAP/1.1')
     StatusLine(version='ICAP/1.1', code=200, reason='OK')
 
-    But generally, try not to. It's generally poor form to change these sorts
-    of things.
+    But **don't do it without a good reason**. It's generally poor form to
+    change these sorts of things.
+
+    Instances can also be constructed without the ``reason`` attribute
+    fulfilled. In these cases, it will be filled out from
+    `icap.errors.icap_response_codes` or `icap.errors.http_response_codes`:
+
+    >>> from icap import StatusLine
+    >>> StatusLine('HTTP/1.1', '204')
+    StatusLine(version='HTTP/1.1', code=204, reason='No Content')
     """
     __slots__ = ()
 
