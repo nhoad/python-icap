@@ -161,7 +161,23 @@ class HeadersDict(OrderedDict):
 
 
 class ICAPMessage(object):
+    """Base ICAP class for generalising certain properties of both requests and
+    responses.
+
+    Should not be used directly - use `~icap.models.ICAPRequest` or
+    `~icap.models.ICAPResponse` instead.
+
+    """
     def __init__(self, headers=None, http=None):
+        """Initialise a new `ICAPRequest` instance.
+
+        If ``headers`` are not given, default to an empty instance of
+        `~icap.models.HeadersDict`.
+
+        ``http`` is the encapsulated HTTP message, either an instance of
+        `~icap.models.ICAPRequest` or `~icap.models.ICAPResponse`.
+
+        """
         self.headers = headers or HeadersDict()
 
         # really not comfortable with this default...
@@ -169,24 +185,52 @@ class ICAPMessage(object):
 
     @cached_property
     def is_request(self):
-        return not self.is_response
+        """Return True if this object is a request, False otherwise.
+
+        This is just a shortcut for ``isinstance(self, ICAPRequest)``.
+
+        """
+        return isinstance(self, ICAPRequest)
 
     @cached_property
     def is_response(self):
+        """Return True if this object is a response, False otherwise.
+
+        This is just a shortcut for ``isinstance(self, ICAPResponse)``.
+
+        """
         return isinstance(self, ICAPResponse)
 
     @cached_property
     def has_body(self):
+        """Return True if this object has a payload."""
+        if self.is_request and self.is_options and 'encapsulated' not in self.headers:
+            return False
         return 'null-body' not in self.headers['encapsulated']
 
 
 class ICAPRequest(ICAPMessage):
+    """Representation of a parsed ICAP request."""
+
     def __init__(self, request_line=None, *args, **kwargs):
+        """Initialise a new `ICAPRequest` instance.
+
+        If no request_line is given, a default of "UNKNOWN / ICAP/1.0" will be
+        used.
+
+        For all other available attributes, see `~icap.models.ICAPMessage`.
+
+        """
         super(ICAPRequest, self).__init__(*args, **kwargs)
-        self.request_line = request_line or RequestLine('ICAP/1.1', 200, 'OK')
+        self.request_line = request_line or RequestLine("UNKNOWN", "/", "ICAP/1.0")
 
     @classmethod
     def from_parser(cls, parser):
+        """Return an instance of `~icap.models.ICAPRequest` from ``parser``.
+
+        ``parser`` MUST be an instance of `~icap.parsing.ICAPRequestParser`.
+
+        """
         assert isinstance(parser, ICAPRequestParser)
 
         self = cls(parser.sline, parser.headers, parser.http)
@@ -194,24 +238,36 @@ class ICAPRequest(ICAPMessage):
 
     @cached_property
     def allow_204(self):
+        """Return True of the client supports a 204 response code. False otherwise."""
         # FIXME: this should parse the list.
         return ('204' in self.headers.get('allow', '') or 'preview' in self.headers)
 
     @cached_property
     def is_reqmod(self):
+        """Return True if the current request is a REQMOD request."""
         return self.request_line.method == 'REQMOD'
 
     @cached_property
     def is_respmod(self):
+        """Return True if the current request is a RESPMOD request."""
         return self.request_line.method == 'RESPMOD'
 
     @cached_property
     def is_options(self):
+        """Return True if the current request is an OPTIONS request."""
         return self.request_line.method == 'OPTIONS'
 
 
 class ICAPResponse(ICAPMessage):
     def __init__(self, status_line=None, *args, **kwargs):
+        """Initialise a new `ICAPResponse` instance.
+
+        If no status_line is given, a default of "ICAP/1.0 200 OK" will be
+        used.
+
+        For all other available attributes, see `~icap.models.ICAPMessage`.
+
+        """
         super(ICAPResponse, self).__init__(*args, **kwargs)
         self.status_line = status_line or StatusLine('ICAP/1.0', 200, 'OK')
 
@@ -258,7 +314,7 @@ class HTTPMessage(object):
 
     @cached_property
     def is_request(self):
-        return not self.is_response
+        return isinstance(self, HTTPRequest)
 
     @cached_property
     def is_response(self):

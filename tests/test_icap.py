@@ -259,23 +259,3 @@ def test_HeadersDict():
     assert str(c) == 'lamp: i love lamp\r\n'
     assert str(d) == 'lamp: i dont love lamp\r\n'
     assert str(HeadersDict()) == ''
-
-
-class TestICAPResponse(object):
-    def test_from_error(self):
-        s = ICAPResponse.from_error(200)
-        assert str(s) == 'ICAP/1.0 200 OK\r\n'
-
-        s = ICAPResponse.from_error(ICAPAbort(200))
-        assert str(s) == 'ICAP/1.0 200 OK\r\n'
-
-        s = ICAPResponse.from_error(ICAPAbort(204))
-        assert str(s) == 'ICAP/1.0 204 No Modifications Needed\r\n'
-
-        headers = HeadersDict([
-            ('header', 'value'),
-        ])
-
-        s = ICAPResponse.from_error(ICAPAbort(204))
-        s.headers = headers
-        assert str(s) == 'ICAP/1.0 204 No Modifications Needed\r\nheader: value\r\n'
