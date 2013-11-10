@@ -20,7 +20,7 @@ class RequestLine(namedtuple('RequestLine', 'method uri version')):
     """Parsed request line, e.g. GET / HTTP/1.1, or
     REQMOD / ICAP/1.1.
 
-    Available attributes are method, uri, version and query.
+    Available attributes are ``method``, ``uri``, ``version`` and ``query``.
 
     This class is purposefully directly immutable. You may modify the
     attributes on the `uri` attribute all you want; they will be reserialized.
@@ -51,6 +51,12 @@ class RequestLine(namedtuple('RequestLine', 'method uri version')):
 
     @property
     def query(self):
+        """Proxy attribute for ``self.uri.query``.
+
+        Returns a reference, so modifications to the query via this property
+        will be reserialised.
+
+        """
         return self.uri.query
 
 
@@ -105,6 +111,11 @@ class HeadersDict(OrderedDict):
             self[key] = value
 
     def __setitem__(self, key, value):
+        """Append``value`` to the list stored at ``key``, case insensitively.
+
+        The case of ``key`` is preserved internally for later use.
+
+        """
         lkey = key.lower()
 
         if lkey not in self:
@@ -113,17 +124,19 @@ class HeadersDict(OrderedDict):
             OrderedDict.__getitem__(self, lkey).append((key, value))
 
     def __getitem__(self, key):
-        """Return the first value stored at `key`."""
+        """Return the first value stored at ``key``."""
         return OrderedDict.__getitem__(self, key.lower())[0][1]
 
     def get(self, key, default=None):
+        """Return the first value stored at ``key``. Return ``default`` if no
+        value is present."""
         try:
             return self.__getitem__(key)
         except KeyError:
             return default
 
     def getlist(self, key, default=list):
-        """Return all values stored at `key`."""
+        """Return all values stored at ``key``."""
         try:
             return [v for k, v in OrderedDict.__getitem__(self, key.lower())]
         except KeyError:
@@ -169,9 +182,7 @@ class ICAPMessage(object):
 
     """
     def __init__(self, headers=None, http=None):
-        """Initialise a new `ICAPRequest` instance.
-
-        If ``headers`` are not given, default to an empty instance of
+        """If ``headers`` is not given, default to an empty instance of
         `~icap.models.HeadersDict`.
 
         ``http`` is the encapsulated HTTP message, either an instance of
@@ -185,7 +196,7 @@ class ICAPMessage(object):
 
     @cached_property
     def is_request(self):
-        """Return True if this object is a request, False otherwise.
+        """Return True if this object is a request.
 
         This is just a shortcut for ``isinstance(self, ICAPRequest)``.
 
@@ -194,7 +205,7 @@ class ICAPMessage(object):
 
     @cached_property
     def is_response(self):
-        """Return True if this object is a response, False otherwise.
+        """Return True if this object is a response.
 
         This is just a shortcut for ``isinstance(self, ICAPResponse)``.
 
@@ -210,13 +221,11 @@ class ICAPMessage(object):
 
 
 class ICAPRequest(ICAPMessage):
-    """Representation of a parsed ICAP request."""
+    """Representation of an ICAP request."""
 
     def __init__(self, request_line=None, *args, **kwargs):
-        """Initialise a new `ICAPRequest` instance.
-
-        If no request_line is given, a default of "UNKNOWN / ICAP/1.0" will be
-        used.
+        """If no ``request_line`` is given, a default of "UNKNOWN / ICAP/1.0"
+        will be used.
 
         For all other available attributes, see `~icap.models.ICAPMessage`.
 
@@ -238,7 +247,7 @@ class ICAPRequest(ICAPMessage):
 
     @cached_property
     def allow_204(self):
-        """Return True of the client supports a 204 response code. False otherwise."""
+        """Return True of the client supports a 204 response code."""
         # FIXME: this should parse the list.
         return ('204' in self.headers.get('allow', '') or 'preview' in self.headers)
 
@@ -259,11 +268,11 @@ class ICAPRequest(ICAPMessage):
 
 
 class ICAPResponse(ICAPMessage):
-    def __init__(self, status_line=None, *args, **kwargs):
-        """Initialise a new `ICAPResponse` instance.
+    """Representation of an ICAP response."""
 
-        If no status_line is given, a default of "ICAP/1.0 200 OK" will be
-        used.
+    def __init__(self, status_line=None, *args, **kwargs):
+        """If no ``status_line`` is given, a default of "ICAP/1.0 200 OK" will
+        be used.
 
         For all other available attributes, see `~icap.models.ICAPMessage`.
 
@@ -286,13 +295,37 @@ class ICAPResponse(ICAPMessage):
 
 
 class HTTPMessage(object):
+    """Base HTTP class for generalising certain properties of both requests and
+    responses.
+
+    Should not be used directly - use `~icap.models.HTTPRequest` or
+    `~icap.models.HTTPResponse` instead.
+
+    """
+    __body = None
+
     def __init__(self, headers=None, body=None):
+        """If ``headers`` is not given, default to an empty instance of
+        `~icap.models.HeadersDict`.
+
+        ``body`` is an iterable of the payload of the HTTP message. It can be a
+        stream, list of strings, a generator or a string.
+        """
         self.headers = headers or HeadersDict()
-        self.__body = None
-        self.body = bodypipe(body or [])
+        self.body = body
 
     @property
     def body(self):
+        """Property for wrapping the body of a HTTP message.
+
+        Setting this property will perform necessary wrapping to ensure it will
+        be an instance of `~icap.serialization.StreamBodyPipe` or `icap.serialization.MemoryBodyPipe` when accessed.
+
+        When setting this property, if the old value is a
+        `~icap.serialization.StreamBodyPipe`, i.e. a container around an object
+        with `readline()` and `read()` methods, the old stream will be consumed
+        first.
+        """
         return self.__body
 
     @body.setter
@@ -314,32 +347,70 @@ class HTTPMessage(object):
 
     @cached_property
     def is_request(self):
+        """Return True if this object is a request.
+
+        This is just a shortcut for ``isinstance(self, HTTPRequest)``.
+
+        """
         return isinstance(self, HTTPRequest)
 
     @cached_property
     def is_response(self):
+        """Return True if this object is a response.
+
+        This is just a shortcut for ``isinstance(self, HTTPResponse)``.
+
+        """
         return isinstance(self, HTTPResponse)
 
 
 class HTTPRequest(HTTPMessage):
+    """Representation of a HTTP request."""
+
     def __init__(self, request_line=None, *args, **kwargs):
+        """If no ``request_line`` is given, a default of "GET / HTTP/1.1" will
+        be used.
+
+        For all other available attributes, see `~icap.models.HTTPMessage`.
+
+        """
         self.request_line = request_line or RequestLine('GET', '/', 'HTTP/1.1')
         super(HTTPRequest, self).__init__(*args, **kwargs)
 
     @classmethod
     def from_parser(cls, parser):
+        """Return an instance of `~icap.models.HTTPRequest` from ``parser``.
+
+        ``parser`` MUST be an instance of `~icap.parsing.HTTPMessageParser`.
+
+        """
         assert not isinstance(parser, ICAPRequestParser)
         assert parser.is_request
         return cls(parser.sline, parser.headers, parser.stream)
 
 
 class HTTPResponse(HTTPMessage):
+    """Representation of a HTTP response."""
+
     def __init__(self, status_line=None, *args, **kwargs):
+        """Initialise a new `HTTPResponse` instance.
+
+        If no ``status_line`` is given, a default of "HTTP/1.1 200 OK" will be
+        used.
+
+        For all other available attributes, see `~icap.models.HTTPMessage`.
+
+        """
         super(HTTPResponse, self).__init__(*args, **kwargs)
         self.status_line = status_line or StatusLine('HTTP/1.1', 200, 'OK')
 
     @classmethod
     def from_parser(cls, parser):
+        """Return an instance of `~icap.models.HTTPResponse` from ``parser``.
+
+        ``parser`` MUST be an instance of `~icap.parsing.HTTPMessageParser`.
+
+        """
         assert not isinstance(parser, ICAPRequestParser)
         assert parser.is_response
         return cls(parser.sline, parser.headers, parser.stream)

@@ -309,7 +309,7 @@ class TestServer(object):
             assert '200 OK' in transaction
 
     @pytest.mark.parametrize('force_204', [True, False])
-    def test_handle_conn__empty_return_forces_reserialisation(self, force_204):
+    def test_handle_conn__empty_return_forces_reserialization(self, force_204):
         input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
 
         server = Server(None)

@@ -160,8 +160,9 @@ class Serializer(object):
 
 
 def bodypipe(source):
-    """Factory function that returns an instance of :class:`MemoryBodyPipe` or
-    :class:`StreamBodyPipe`, depending on the input.
+    """Factory function that returns an instance of
+    `~icap.serialization.MemoryBodyPipe` or
+    `~icap.serialization.StreamBodyPipe`, depending on the input.
     """
     if hasattr(source, 'readline') and hasattr(source, 'read'):
         return StreamBodyPipe(source)
