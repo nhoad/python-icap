@@ -1,11 +1,10 @@
 #!/usr/bin/env python2.7
 
-from icap import Server, DomainCriteria
+from asyncio import get_event_loop
 
-server = Server()
+from icap import ICAPProtocolFactory, DomainCriteria, handler, run
 
-
-@server.handler(DomainCriteria('*google.*'))
+@handler(DomainCriteria('*google.*'))
 def reqmod(request):
     query = request.request_line.query
 
@@ -14,4 +13,4 @@ def reqmod(request):
 
 
 if __name__ == '__main__':
-    server.run()
+    run(host='127.0.0.1', port=1334)

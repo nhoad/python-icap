@@ -1,8 +1,10 @@
 import re
+import functools
 
+from asyncio.tasks import iscoroutine, Task
 from collections import OrderedDict
 
-from werkzeug.http import parse_dict_header
+from werkzeug import parse_dict_header
 
 from .errors import InvalidEncapsulatedHeadersError
 
@@ -26,7 +28,7 @@ def convert_offsets_to_sizes(fields):
     previous_offset = 0
     previous_name = None
 
-    for name, offset in fields.iteritems():
+    for name, offset in fields.items():
         size = offset - previous_offset
         if previous_name:
             encapsulated_by_sizes[previous_name] = size
@@ -69,7 +71,7 @@ del b
 
 
 def compile_encapsulated(fields):
-    for key, value in fields.iteritems():
+    for key, value in fields.items():
         fields[key] = re.compile(value)
     return fields
 
@@ -97,10 +99,10 @@ def parse_encapsulated_field(raw_field):
 
     keys = ' '.join(parsed)
 
-    for regex in encapsulated_input_orders.values():
+    for regex in list(encapsulated_input_orders.values()):
         if regex.match(keys):
             return OrderedDict((key, int(value)) for (key, value)
-                               in parsed.iteritems())
+                               in parsed.items())
     else:
         raise InvalidEncapsulatedHeadersError(raw_field)
 
@@ -122,8 +124,26 @@ def dump_encapsulated_field(field):
     """
     keys = ' '.join(field)
 
-    for regex in encapsulated_output_orders.values():
+    for regex in list(encapsulated_output_orders.values()):
         if regex.match(keys):
-            return ', '.join('%s=%d' % it for it in field.iteritems())
+            return ', '.join('%s=%d' % it for it in field.items())
     else:
         raise InvalidEncapsulatedHeadersError(field)
+
+
+def maybe_coroutine(value):
+    if iscoroutine(value):
+        return value
+
+    def coro():
+        yield
+        return value
+    return coro()
+
+
+def task(func):
+    @functools.wraps(task)
+    def caller(*args, **kwargs):
+        f = func(*args, **kwargs)
+        return Task(f)
+    return caller

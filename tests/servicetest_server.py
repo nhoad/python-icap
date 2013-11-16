@@ -3,86 +3,85 @@ Simple persistent-connection test. Starts a coroutine to perform requests over
 a single socket, connecting to a server running in the same process.
 """
 
-from gevent import monkey, spawn_later, with_timeout
-monkey.patch_all()
-
+import asyncio
 import logging
 import os
-import socket
 import sys
 import time
 
-from gevent.server import StreamServer
+from signal import SIGINT
 
-from icap import Server
+from icap import run, handler
 
 
 logging.basicConfig(stream=sys.stderr)
 
 
-def start_client(server):
-    def later():
-        s = socket.socket()
-        s.connect(('127.0.0.1', 1334))
+def start_client(pid):
+    time.sleep(0.1)
 
-        with open('data/icap_request_with_two_header_sets.request') as f:
-            sent = f.read()
+    with open('data/icap_request_with_two_header_sets.request', 'rb') as f:
+        sent = f.read()
 
-        fastest = 1.0
-        slowest = 0.0
-        total = 0.0
-        try:
-            for i in range(1, 1301):
-                start = time.time()
-                s.sendall(sent)
-                received = ''
+    loop = asyncio.get_event_loop()
 
-                # context switches mean premature reads sometimes. It's bad, I know.
-                # Would be fixed by separate processes for client/server.
-                while len(received) != 314:
-                    received += s.recv(314)
+    COUNT = 10
 
-                n = time.time() - start
+    class ICAPClientTestProtocol(asyncio.Protocol):
+        def connection_made(self, transport):
+            self.transport = transport
+            self.count = 0
 
-                fastest = min(fastest, n)
-                slowest = max(slowest, n)
+            self.fastest = 1.0
+            self.slowest = 0.0
+            self.total = 0.0
 
-                total += n
+            self.send_request()
 
-                print n, 'sent=%d' % len(sent), 'recv=%d' % len(received)
+        def send_request(self):
+            self.data = b''
+            self.count += 1
 
-                try:
-                    assert received.endswith('cool woo\r\n0\r\n\r\n')
-                except Exception:
-                    print 'Unexpected error!', i
-                    print repr(received)
-                    print '=' * 50
-                    print 'sent'
-                    print '=' * 50
-                    print sent
-                    print '=' * 50
-                    print 'received'
-                    print '=' * 50
-                    # return code for Makefile
-                    os._exit(1)
-        finally:
-            print '%d requests took %f seconds (average=%f, fastest=%f, slowest=%f)' % (i, total, (total/i), fastest, slowest)
-            print 'closing'
-            s.close()
-            server.stop()
+            self.start = time.time()
+            self.transport.write(sent)
 
-    spawn_later(1, with_timeout, 1, later)
+        def data_received(self, data):
+            self.data += data
+
+            if len(self.data) == 314:
+                n = time.time() - self.start
+                print('client %.5f' % n)
+
+                if self.count == COUNT:
+                    self.transport.close()
+                    loop.stop()
+                    print(
+                        '%d requests took %f seconds (average=%f, fastest=%f, slowest=%f)'
+                            % (COUNT, self.total, (self.total/COUNT),
+                               self.fastest, self.slowest))
+                else:
+                    self.send_request()
+
+                self.fastest = min(self.fastest, n)
+                self.slowest = max(self.slowest, n)
+                self.total += n
+
+    f = loop.create_connection(ICAPClientTestProtocol, '127.0.0.1', 1334)
+    loop.run_until_complete(f)
+    loop.run_forever()
+    os.kill(pid, SIGINT)
 
 
 def main():
-    server = Server(StreamServer)
-
-    @server.handler(lambda *args: True)
+    @handler(lambda *args: True)
     def respmod(request):
-        request.body = 'cool woo'
+        request.body = b'cool woo'
 
-    start_client(server)
-    server.run()
+    pid = os.fork()
+    if pid == 0:
+        run(port=1334)
+    else:
+        start_client(pid)
 
 if __name__ == '__main__':
     main()

@@ -1,4 +1,4 @@
-import urlparse
+import urllib.parse
 
 from mock import MagicMock
 
@@ -8,7 +8,7 @@ from icap import RegexCriteria, DomainCriteria
 class FakeRequest(object):
     def __init__(self, url):
         self.session = {
-            'url': urlparse.urlparse(url),
+            'url': urllib.parse.urlparse(url),
         }
         self.http = MagicMock()
         self.http.headers.get.return_value = self.session['url'].netloc

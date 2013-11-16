@@ -1,93 +1,79 @@
+import asyncio
 import uuid
-
-from StringIO import StringIO
 
 import pytest
 
-from mock import MagicMock, patch, call
+from mock import MagicMock, patch
 
-from icap import Server, DomainCriteria, HTTPResponse, HeadersDict, HTTPRequest, RegexCriteria
-
-
-def data_string(req_line, path):
-    parts = req_line, open('data/' + path).read()
-    return '\r\n'.join(p for p in parts if p)
+from icap import DomainCriteria, HTTPResponse, HeadersDict, HTTPRequest, handler
+from icap.asyncio import _HANDLERS, get_handler
 
 
-class TestServer(object):
-    def test_start(self):
-        s = Server(None)
+from icap.models import RequestLine, ICAPRequest
+from icap.asyncio import ICAPProtocolFactory, ICAPProtocol
+from icap.errors import ICAPAbort
+from io import BytesIO
 
-        one = RegexCriteria(r'foo')
-        two = DomainCriteria('*google.com*')
-        three = RegexCriteria(r'foo')
 
-        @s.handler(one)
-        def respmod():
-            pass  # pragma: no cover
+def data_string(path):
+    return open('data/' + path, 'rb').read()
 
-        @s.handler(three)
-        def respmod():
-            pass  # pragma: no cover
 
-        @s.handler(two)
-        def respmod():
-            pass  # pragma: no cover
+class BytesIOTransport:
+    def __init__(self):
+        self._buffer = BytesIO()
+        self._paused = False
 
-        s.start()
+    def write(self, data):
+        self._buffer.write(data)
 
-        handlers = [i[0] for i in s.handlers['/respmod']]
+    def pause_reading(self):
+        assert not self._paused, 'Already paused'
+        self._paused = True
 
-        print 'expected', [two, one, three]
-        print 'actual', handlers
-        assert handlers == [two, one, three]
+    def resume_reading(self):
+        assert self._paused, 'Already unpaused'
+        self._paused = False
 
-    def test_handle_conn__options_request_no_handlers(self):
-        input_bytes = data_string('', 'options_request.request')
-        socket = MagicMock()
-        fake_stream = StringIO(input_bytes)
-        socket.makefile.return_value = fake_stream
-        fake_stream.close = lambda: None
+    def getvalue(self):
+        return self._buffer.getvalue()
 
-        server = Server()
-        server.handle_conn(socket, MagicMock())
+    def close(self):
+        pass
 
-        s = fake_stream.getvalue()
 
-        print s
+class TestICAPProtocolFactory(object):
+    def setup_method(self, method):
+        _HANDLERS.clear()
 
-        assert 'ICAP/1.0 404 ICAP Service Not Found' in s
-        assert 'ISTag: ' in s
-        assert 'Date: ' in s
-        assert 'Encapsulated: ' in s
+    def test_validate_request_aborts_400_for_non_icap(self):
+        request_line = RequestLine("REQMOD", "/", "HTTP/1.1")
+        request = ICAPRequest(request_line)
 
-    def test_handle_conn__options_request(self):
-        input_bytes = data_string('', 'options_request.request')
-        socket = MagicMock()
-        fake_stream = StringIO(input_bytes)
-        socket.makefile.return_value = fake_stream
-        fake_stream.close = lambda: None
+        try:
+            ICAPProtocolFactory().validate_request(request)
+        except ICAPAbort as e:
+            assert e.status_code == 400
 
-        server = self.dummy_server()
-        server.handle_conn(socket, MagicMock())
+        m = MagicMock(is_request=False)
 
-        s = fake_stream.getvalue()
+        try:
+            ICAPProtocolFactory().validate_request(m)
+        except ICAPAbort as e:
+            assert e.status_code == 400
 
-        print s
-
-        assert 'ICAP/1.0 200 OK' in s
-        assert 'Methods: RESPMOD' in s
-        assert 'Allow: 204' in s
-        assert 'ISTag: ' in s
-        assert 'Date: ' in s
-        assert 'Encapsulated: ' in s
+    def test_as_factory(self):
+        f = ICAPProtocolFactory()
+        t = f()
+        assert isinstance(t, ICAPProtocol)
+        assert t.factory == f
 
     @pytest.mark.parametrize('is_tag', [
         'a string',
         lambda request: 'a string',
     ])
     def test_is_tag__valid_values(self, is_tag):
-        s = Server(None)
+        s = ICAPProtocolFactory()
         s.hooks('is_tag')(lambda request: 'a string')
         assert s.is_tag(None) == '"a string"'
 
@@ -97,7 +83,7 @@ class TestServer(object):
         ('lamp', 'lamp'),
     ])
     def test_is_tag__maximum_length(self, is_tag, endswith):
-        s = Server(None)
+        s = ICAPProtocolFactory()
         s.hooks('is_tag')(lambda request: is_tag)
         is_tag = s.is_tag(None)
         assert is_tag.endswith(endswith+'"')
@@ -105,7 +91,7 @@ class TestServer(object):
 
     def test_is_tag__error(self):
         with patch.object(uuid.UUID, 'hex', 'cool hash'):
-            server = Server(None)
+            server = ICAPProtocolFactory()
 
         @server.hooks('is_tag')
         def is_tag(request):
@@ -113,32 +99,209 @@ class TestServer(object):
 
         assert server.is_tag(None) == '"cool hash"'
 
+    def test_handle_mapping(self):
+        @handler(lambda *args: True, name='lamps')
+        def reqmod(message):
+            pass  # pragma: no cover
+
+        @handler(lambda *args: True, name='blarg')
+        def respmod(message):
+            pass  # pragma: no cover
+
+        print(list(_HANDLERS.keys()))
+
+        mock_request = MagicMock(is_reqmod=True)
+        mock_request.request_line.uri.path = '/lamps/reqmod'
+        assert get_handler(mock_request)[0] == reqmod
+
+        mock_request = MagicMock(is_reqmod=False)
+        mock_request.request_line.uri.path = '/blarg/respmod'
+        assert get_handler(mock_request)[0] == respmod
+
+    def test_handle_reqmod(self):
+        @handler(lambda *args: True)
+        def reqmod(self, *args):
+            pass  # pragma: no cover
+
+        request = MagicMock(http='http')
+        request.request_line.uri.path = '/reqmod'
+
+        assert get_handler(request)[0] == reqmod
+
+    def test_handle_respmod(self):
+        @handler(lambda *args: True)
+        def respmod(self, *args):
+            pass  # pragma: no cover
+
+        request = MagicMock(is_reqmod=False, http='http')
+        request.request_line.uri.path = '/respmod'
+
+        assert get_handler(request)[0] == respmod
+
+    def test_handle_both(self):
+        @handler(lambda *args: True)
+        def respmod(self, *args):
+            pass  # pragma: no cover
+
+        @handler(lambda *args: True)
+        def reqmod(self, *args):
+            pass  # pragma: no cover
+
+        request = MagicMock(is_reqmod=False, http='http')
+        request.request_line.uri.path = '/respmod'
+        assert get_handler(request)[0] == respmod
+
+        request = MagicMock(http='http')
+        request.request_line.uri.path = '/reqmod'
+        assert get_handler(request)[0] == reqmod
+
+    def test_handle_class(self):
+        @handler(lambda *args: True)
+        class Foo(object):
+            def reqmod(self, message):
+                pass  # pragma: no cover
+
+            def respmod(self, message):
+                pass  # pragma: no cover
+
+        print(_HANDLERS)
+
+        reqmod = MagicMock(http='http')
+        respmod = MagicMock(is_reqmod=False, http='http')
+        reqmod.request_line.uri.path = '/reqmod'
+        respmod.request_line.uri.path = '/respmod'
+
+        assert get_handler(reqmod)[0] == _HANDLERS['/reqmod'][0][1]
+        assert get_handler(respmod)[0] == _HANDLERS['/respmod'][0][1]
+
+    @pytest.mark.parametrize(('input_bytes', 'expected_message'), [
+        (b'OPTIONS / HTTP/1.0\r\n\r\n', b'400 Bad Request'),  # HTTP is a no-no
+        (b'OPTIONS / ICAP/1.1\r\n\r\n', b'505 ICAP Version Not Supported'),  # invalid version
+        (b'OPTIONS /\r\n\r\n', b'400 Bad Request'),  # malformed
+        (b'asdf / ICAP/1.0\r\n\r\n', b'501 Method Not Implemented'),
+    ])
+    def test_malformed_requests_are_handled(self, input_bytes, expected_message):
+        s = self.run_test(self.dummy_server(), input_bytes)
+
+        print(s)
+        assert expected_message in s
+
+    def dummy_server(self):
+        server = ICAPProtocolFactory()
+
+        @handler()
+        def reqmod(request):
+            pass
+
+        @handler()
+        def respmod(request):
+            pass
+
+        return server
+
+    @pytest.mark.parametrize('exception', [
+        ValueError,
+        Exception,
+        BaseException,
+    ])
+    def test_handle_conn__handles_exceptions(self, exception):
+        input_bytes = data_string('icap_request_with_two_header_sets.request')
+
+        server = ICAPProtocolFactory()
+
+        @handler(DomainCriteria('www.origin-server.com'))
+        def respmod(request):
+            raise exception
+
+        transaction = self.run_test(server, input_bytes)
+
+        assert b'500 Internal Server Error' in transaction
+
+    @pytest.mark.parametrize('is_reqmod', [False, True])
+    def test_poor_matching_uris_returns_405(self, is_reqmod):
+        if is_reqmod:
+            path = 'request_with_bad_resource.request'
+        else:
+            path = 'icap_request_with_two_header_sets_bad_resource.request'
+        input_bytes = data_string(path)
+
+        server = ICAPProtocolFactory()
+
+        s = self.run_test(server, input_bytes)
+
+        print(s)
+        assert b'405 Method Not Allowed For Service' in s
+
+    def run_test(self, server, input_bytes, force_204=False,
+                 assert_mutated=False, multi_chunk=False):
+        if force_204:
+            input_bytes = input_bytes.replace(b'Encapsulated', b'Allow: 204\r\nEncapsulated')
+
+        protocol = server()
+        protocol.connection_made(BytesIOTransport())
+
+        f = protocol.data_received(input_bytes)
+
+        asyncio.get_event_loop().run_until_complete(f)
+
+        transaction = protocol.transport.getvalue()
+
+        print(transaction.decode('utf8'))
+
+        assert transaction.count(b'Date: ') <= 2
+        assert transaction.count(b'Encapsulated: ') == 1
+
+        assert transaction.count(b'ISTag: ') == 1
+
+        if assert_mutated and not force_204:
+            # WRONG
+            if not force_204 and not multi_chunk:
+                assert transaction.count(b'Content-Length: ') == 1
+            else:
+                assert transaction.count(b'Content-Length: ') == 0
+
+        return transaction
+
+    def test_handle_conn__options_request_no_handlers(self):
+        input_bytes = data_string('options_request.request')
+
+        s = self.run_test(ICAPProtocolFactory(), input_bytes)
+
+        print(s)
+
+        assert b'ICAP/1.0 404 ICAP Service Not Found' in s
+        assert b'ISTag: ' in s
+        assert b'Date: ' in s
+        assert b'Encapsulated: ' in s
+
+    def test_handle_conn__options_request(self):
+        input_bytes = data_string('options_request.request')
+        server = self.dummy_server()
+        s = self.run_test(server, input_bytes)
+
+        assert b'ICAP/1.0 200 OK' in s
+        assert b'Methods: RESPMOD' in s
+        assert b'Allow: 204' in s
+        assert b'ISTag: ' in s
+        assert b'Date: ' in s
+        assert b'Encapsulated: ' in s
+
     def test_handle_conn__options_request_failure(self):
-        input_bytes = data_string('', 'options_request.request')
-        socket = MagicMock()
-        fake_stream = StringIO(input_bytes)
-        socket.makefile.return_value = fake_stream
-        fake_stream.close = lambda: None
+        input_bytes = data_string('options_request.request')
 
         server = self.dummy_server()
 
         @server.hooks('options_headers')
         def options_headers():
             raise Exception('noooo')
-        server.handle_conn(socket, MagicMock())
 
-        s = fake_stream.getvalue()
+        s = self.run_test(server, input_bytes)
 
-        print s
-        assert 'ICAP/1.0 200 OK' in s
+        print(s)
+        assert b'ICAP/1.0 200 OK' in s
 
     def test_handle_conn__options_request_extra_headers(self):
-        input_bytes = data_string('', 'options_request.request')
-        socket = MagicMock()
-        fake_stream = StringIO(input_bytes)
-        socket.makefile.return_value = fake_stream
-        fake_stream.close = lambda: None
-
+        input_bytes = data_string('options_request.request')
         server = self.dummy_server()
 
         @server.hooks('options_headers')
@@ -147,146 +310,77 @@ class TestServer(object):
                 'Transfer-Complete': '*',
                 'Options-TTL': '3600',
             }
-        server.handle_conn(socket, MagicMock())
+        s = self.run_test(server, input_bytes)
 
-        s = fake_stream.getvalue()
-
-        print s
-        assert 'ICAP/1.0 200 OK' in s
-        assert 'Methods: RESPMOD' in s
-        assert 'Allow: 204' in s
-        assert 'ISTag: ' in s
-        assert 'Date: ' in s
-        assert 'Encapsulated: ' in s
-        assert 'Transfer-Complete: *' in s
-        assert 'Options-TTL: 3600' in s
+        print(s)
+        assert b'ICAP/1.0 200 OK' in s
+        assert b'Methods: RESPMOD' in s
+        assert b'Allow: 204' in s
+        assert b'ISTag: ' in s
+        assert b'Date: ' in s
+        assert b'Encapsulated: ' in s
+        assert b'Transfer-Complete: *' in s
+        assert b'Options-TTL: 3600' in s
 
     def test_handle_conn__response_for_reqmod(self):
-        input_bytes = data_string('', 'request_with_http_request_no_payload.request')
+        input_bytes = data_string('request_with_http_request_no_payload.request')
 
-        server = Server(None)
-        @server.handler(DomainCriteria('www.origin-server.com'))
+        server = ICAPProtocolFactory()
+        @handler(DomainCriteria('www.origin-server.com'))
         def reqmod(request):
-            return HTTPResponse(body='cool body')
+            return HTTPResponse(body=b'cool body')
 
         transaction = self.run_test(server, input_bytes)
 
-        assert "HTTP/1.1 200 OK" in transaction
-        assert "cool body" in transaction
+        assert b"HTTP/1.1 200 OK" in transaction
+        assert b"cool body" in transaction
 
     def test_handle_conn__request_for_reqmod(self):
-        input_bytes = data_string('', 'request_with_http_request_no_payload.request')
+        input_bytes = data_string('request_with_http_request_no_payload.request')
 
-        server = Server(None)
+        server = ICAPProtocolFactory()
 
-        @server.handler(DomainCriteria('www.origin-server.com'))
+        @handler(DomainCriteria('www.origin-server.com'))
         def reqmod(request):
-            return HTTPRequest(body='cool body', headers=request.headers)
+            return HTTPRequest(body=b'cool body', headers=request.headers)
 
         transaction = self.run_test(server, input_bytes)
 
-        assert "cool body" in transaction
+        assert b"cool body" in transaction
 
     def test_handle_conn__request_for_respmod(self):
-        input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
+        input_bytes = data_string('icap_request_with_two_header_sets.request')
 
-        server = Server(None)
+        server = ICAPProtocolFactory()
 
-        @server.handler(DomainCriteria('www.origin-server.com'))
+        @handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
             return HTTPRequest()
 
         transaction = self.run_test(server, input_bytes)
 
-        assert "500 Internal Server Error" in transaction
-        assert transaction.count("This is data that was returned by an origin server") == 1
+        assert b"500 Internal Server Error" in transaction
+        assert transaction.count(b"This is data that was returned by an origin server") == 0
 
     def test_handle_conn__response_for_respmod(self):
-        input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
+        input_bytes = data_string('icap_request_with_two_header_sets.request')
 
-        server = Server(None)
+        server = ICAPProtocolFactory()
 
-        @server.handler(DomainCriteria('www.origin-server.com'))
+        @handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
             headers = HeadersDict([
                 ('Foo', 'bar'),
                 ('Bar', 'baz'),
             ])
-            return HTTPResponse(headers=headers, body="cool data")
+            return HTTPResponse(headers=headers, body=b"cool data")
 
         transaction = self.run_test(server, input_bytes)
 
-        assert "cool data" in transaction
-        assert "Foo: bar" in transaction
-        assert "Bar: baz" in transaction
-        assert transaction.count("This is data that was returned by an origin server") == 1
-
-    @pytest.mark.parametrize('exception', [
-        ValueError,
-        StandardError,
-        Exception,
-        BaseException,
-    ])
-    def test_handle_conn__handles_exceptions(self, exception):
-        input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
-
-        server = Server(None)
-
-        @server.handler(DomainCriteria('www.origin-server.com'))
-        def respmod(request):
-            raise exception
-
-        transaction = self.run_test(server, input_bytes)
-
-        assert '500 Internal Server Error' in transaction
-
-    def test_handle_conn__handles_socket_errors(self):
-        import socket
-        server = Server(None)
-        s = MagicMock()
-        with patch('icap.server.ICAPRequestParser.from_stream', side_effect=socket.error):
-            server.handle_conn(s, MagicMock())
-        assert s.mock_calls[-1] == call.close()
-
-    @pytest.mark.parametrize(('input_bytes', 'expected_message'), [
-        ('OPTIONS / HTTP/1.0\r\n\r\n', '400 Bad Request'),  # HTTP is a no-no
-        ('OPTIONS / ICAP/1.1\r\n\r\n', '505 ICAP Version Not Supported'),  # invalid version
-        ('OPTIONS /\r\n\r\n', '400 Bad Request'),  # malformed
-        ('asdf / ICAP/1.0\r\n\r\n', '501 Method Not Implemented'),
-    ])
-    def test_non_icap_request_returns_400(self, input_bytes, expected_message):
-        socket = MagicMock()
-        fake_stream = StringIO(input_bytes)
-        socket.makefile.return_value = fake_stream
-        fake_stream.close = lambda: None
-
-        server = self.dummy_server()
-        server.handle_conn(socket, MagicMock())
-
-        s = fake_stream.getvalue()
-
-        print s
-        assert expected_message in s
-
-    @pytest.mark.parametrize('is_reqmod', [False, True])
-    def test_poor_matching_uris_returns_405(self, is_reqmod):
-        if is_reqmod:
-            path = 'request_with_bad_resource.request'
-        else:
-            path = 'icap_request_with_two_header_sets_bad_resource.request'
-        input_bytes = data_string('', path)
-        socket = MagicMock()
-        fake_stream = StringIO(input_bytes)
-        socket.makefile.return_value = fake_stream
-        fake_stream.close = lambda: None
-
-        server = Server(None)
-        server.handle_conn(socket, MagicMock())
-
-        s = fake_stream.getvalue()
-
-        print s
-        assert '405 Method Not Allowed For Service' in s
+        assert b"cool data" in transaction
+        assert b"Foo: bar" in transaction
+        assert b"Bar: baz" in transaction
+        assert transaction.count(b"This is data that was returned by an origin server") == 0
 
     @pytest.mark.parametrize(('force_204', 'strict_when_missing_service'), [
         (False, False),
@@ -295,256 +389,64 @@ class TestServer(object):
         (True, True),
     ])
     def test_handle_conn__no_handler(self, force_204, strict_when_missing_service):
-        input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
+        input_bytes = data_string('icap_request_with_two_header_sets.request')
 
-        server = Server(strict_when_missing_service=strict_when_missing_service)
+        server = ICAPProtocolFactory(strict_when_missing_service=strict_when_missing_service)
         transaction = self.run_test(server, input_bytes, force_204=force_204)
+
+        print(force_204, strict_when_missing_service)
 
         if force_204:
             if strict_when_missing_service:
-                assert '404 ICAP Service Not Found' in transaction
+                assert b'404 ICAP Service Not Found' in transaction
             else:
-                assert '204 No Modifications Needed' in transaction
+                assert b'204 No Modifications Needed' in transaction
         else:
-            assert '200 OK' in transaction
+            if strict_when_missing_service:
+                assert b'404 ICAP Service Not Found' in transaction
+            else:
+                assert b'200 OK' in transaction
 
     @pytest.mark.parametrize('force_204', [True, False])
     def test_handle_conn__empty_return_forces_reserialization(self, force_204):
-        input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
+        input_bytes = data_string('icap_request_with_two_header_sets.request')
 
-        server = Server(None)
+        server = ICAPProtocolFactory()
 
-        @server.handler(DomainCriteria('www.origin-server.com'))
+        @handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
             return
 
         transaction = self.run_test(server, input_bytes, force_204=force_204)
 
-        assert '200 OK' in transaction
-        assert transaction.count('33; lamps') == 2
+        assert b'200 OK' in transaction
+        assert transaction.count(b'33; lamps') == 1
 
     def test_handle_conn__string_return(self):
-        input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
+        input_bytes = data_string('icap_request_with_two_header_sets.request')
 
-        server = Server(None)
+        server = ICAPProtocolFactory()
 
-        @server.handler(DomainCriteria('www.origin-server.com'))
+        @handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
-            return "fooooooooooooooo"
+            return b"fooooooooooooooo"
 
         transaction = self.run_test(server, input_bytes, assert_mutated=True)
 
-        assert "fooooooooooooooo" in transaction
+        assert b"fooooooooooooooo" in transaction
 
     def test_handle_conn__list_return(self):
-        input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
+        input_bytes = data_string('icap_request_with_two_header_sets.request')
 
-        server = Server(None)
+        server = ICAPProtocolFactory()
 
-        @server.handler(DomainCriteria('www.origin-server.com'))
+        @handler(DomainCriteria('www.origin-server.com'))
         def respmod(request):
-            return ["foo", "bar", "baz"]
+            return [b"foo", b"bar", b"baz"]
 
         transaction = self.run_test(server, input_bytes, assert_mutated=True,
                                     multi_chunk=True)
 
-        assert "foo" in transaction
-        assert "bar" in transaction
-        assert "baz" in transaction
-
-    def test_handle_conn__iterable_return(self):
-        input_bytes = data_string('', 'icap_request_with_two_header_sets.request')
-
-        server = Server(None)
-
-        @server.handler(DomainCriteria('www.origin-server.com'))
-        def respmod(request):
-            yield "foo"
-            yield "bar"
-            yield "baz"
-
-        transaction = self.run_test(server, input_bytes, assert_mutated=True,
-                                    multi_chunk=True)
-
-        assert "3\r\nfoo" in transaction
-        assert "3\r\nbar" in transaction
-        assert "3\r\nbaz\r\n0\r\n" in transaction
-
-    def dummy_server(self):
-        server = Server()
-
-        @server.handler()
-        def reqmod(request):
-            pass
-
-        @server.handler()
-        def respmod(request):
-            pass
-
-        return server
-
-    def run_test(self, server, input_bytes, force_204=False,
-                 assert_mutated=False, multi_chunk=False):
-        if force_204:
-            input_bytes = input_bytes.replace('Encapsulated', 'Allow: 204\r\nEncapsulated')
-
-        socket = MagicMock()
-
-        fake_stream = StringIO(input_bytes)
-        # so we can print it out at the end
-        fake_stream.close = lambda: None
-
-        socket.makefile.return_value = fake_stream
-        server.handle_conn(socket, MagicMock())
-        transaction = fake_stream.getvalue()
-
-        print transaction
-
-        assert transaction.count('Date: ') >= 2
-        assert transaction.count('Encapsulated: ') == 2
-
-        assert transaction.count('ISTag: ') == 1
-
-        if assert_mutated and not force_204:
-            assert transaction.count('Content-Length: 51') == 1
-            if not force_204 and not multi_chunk:
-                assert transaction.count('Content-Length: ') == 2
-            else:
-                assert transaction.count('Content-Length: ') == 1
-
-        return transaction
-
-    def test_handle_reqmod(self):
-        s = Server(None)
-
-        @s.handler(lambda *args: True)
-        def reqmod(self, *args):
-            pass  # pragma: no cover
-
-        request = MagicMock(http='http')
-        request.request_line.uri.path = '/reqmod'
-
-        assert s.get_handler(request)[0] == reqmod
-
-    def test_handle_respmod(self):
-        s = Server(None)
-
-        @s.handler(lambda *args: True)
-        def respmod(self, *args):
-            pass  # pragma: no cover
-
-        request = MagicMock(is_reqmod=False, http='http')
-        request.request_line.uri.path = '/respmod'
-
-        assert s.get_handler(request)[0] == respmod
-
-    def test_handle_both(self):
-        s = Server(None)
-
-        @s.handler(lambda *args: True)
-        def respmod(self, *args):
-            pass  # pragma: no cover
-
-        @s.handler(lambda *args: True)
-        def reqmod(self, *args):
-            pass  # pragma: no cover
-
-        request = MagicMock(is_reqmod=False, http='http')
-        request.request_line.uri.path = '/respmod'
-        assert s.get_handler(request)[0] == respmod
-
-        request = MagicMock(http='http')
-        request.request_line.uri.path = '/reqmod'
-        assert s.get_handler(request)[0] == reqmod
-
-    def test_handle_class(self):
-        s = Server(None)
-
-        @s.handler(lambda *args: True)
-        class Foo(object):
-            def reqmod(self, message):
-                pass  # pragma: no cover
-
-            def respmod(self, message):
-                pass  # pragma: no cover
-
-        print s.handlers
-
-        reqmod = MagicMock(http='http')
-        respmod = MagicMock(is_reqmod=False, http='http')
-        reqmod.request_line.uri.path = '/reqmod'
-        respmod.request_line.uri.path = '/respmod'
-
-        assert s.get_handler(reqmod)[0] == s.handlers['/reqmod'][0][1]
-        assert s.get_handler(respmod)[0] == s.handlers['/respmod'][0][1]
-
-    def test_handle_raw(self):
-        s = Server(None)
-
-        called = [False, False]
-
-        reqmod = MagicMock(http='http')
-        respmod = MagicMock(is_reqmod=False, http='http')
-        reqmod.request_line.uri.path = '/reqmod'
-        respmod.request_line.uri.path = '/respmod'
-
-        @s.handler(lambda *args: True, raw=True)
-        class Foo(object):
-            def reqmod(self, message):
-                assert message != 'http'
-                assert message == reqmod
-                called[0] = True
-
-            def respmod(self, message):
-                assert message != 'http'
-                assert message == respmod
-                called[1] = True
-
-        s.handle_request(reqmod)
-        s.handle_request(respmod)
-
-        assert all(called)
-
-    def test_handle_mapping(self):
-        s = Server(None)
-
-        @s.handler(lambda *args: True, name='lamps')
-        def reqmod(message):
-            pass  # pragma: no cover
-
-        @s.handler(lambda *args: True, name='blarg')
-        def respmod(message):
-            pass  # pragma: no cover
-
-        print s.handlers.keys()
-
-        mock_request = MagicMock(is_reqmod=True)
-        mock_request.request_line.uri.path = '/lamps/reqmod'
-        assert s.get_handler(mock_request)[0] == reqmod
-
-        mock_request = MagicMock(is_reqmod=False)
-        mock_request.request_line.uri.path = '/blarg/respmod'
-        assert s.get_handler(mock_request)[0] == respmod
-
-    def test_discover_servers_default_to_gevent(self):
-        from gevent.server import StreamServer
-        s = Server()
-        s.discover_servers()
-        assert s.server_class == StreamServer
-
-    def test_discover_servers_fallback(self):
-        with patch('gevent.server.StreamServer', None):
-            s = Server()
-            s.discover_servers()
-            assert s.server_class is not None
-
-    def test_discover_servers_complain_on_no_fallbacks(self):
-        with patch('gevent.server.StreamServer', None):
-            with patch('SocketServer.TCPServer', None):
-                s = Server()
-                try:
-                    s.discover_servers()
-                except RuntimeError:
-                    pass  # pragma: no cover
-                else:
-                    assert False, "Should complain when no fallbacks are found"
+        assert b"foo" in transaction
+        assert b"bar" in transaction
+        assert b"baz" in transaction

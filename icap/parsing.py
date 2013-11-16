@@ -1,16 +1,22 @@
-from cStringIO import StringIO
+from io import BytesIO, SEEK_END
 
 from werkzeug import cached_property
 
 from .utils import parse_encapsulated_field, convert_offsets_to_sizes
 from .errors import (InvalidEncapsulatedHeadersError, MalformedRequestError,
                      abort)
+from .serialization import BodyPart
 
 
 class ParseState(object):
     empty = 1
     started = 2
     headers_complete = 3
+    body_complete = 4
+
+
+class ChunkParsingError(Exception):
+    pass
 
 
 class ChunkedMessageParser(object):
@@ -19,6 +25,8 @@ class ChunkedMessageParser(object):
         self.sline = None
         self.headers = HeadersDict()
         self.state = ParseState.empty
+        self.body = BytesIO()
+        self.chunks = []
 
     def started(self, set=False):
         if set:
@@ -28,38 +36,56 @@ class ChunkedMessageParser(object):
     def headers_complete(self, set=False):
         if set:
             self.state = ParseState.headers_complete
+            self.on_headers_complete()
         return self.state > ParseState.started
 
-    @classmethod
-    def from_stream(cls, stream):
-        message = cls()
+    def on_headers_complete(self):
+        pass
 
-        complete = message.headers_complete
-        while not complete():
-            line = stream.readline()
+    def complete(self, set=False):
+        if set:
+            self.state = ParseState.body_complete
+        return self.state == ParseState.body_complete
 
-            # Handle a short read, assume the connection was lost.
-            # FIXME: non-crlf-endings
-            if not line.endswith('\r\n'):
-                return None
-            message._feed_line(line)
-
-        assert message.headers_complete()
-
-        message.stream = stream
-        return message
-
-    @classmethod
-    def from_bytes(cls, bytes):
-        return cls.from_stream(StringIO(bytes))
-
-    def _feed_line(self, line):
+    def feed_line(self, line):
+        if isinstance(line, bytes):
+            line = line.decode('utf8')
         if not self.started():
             self.handle_status_line(line)
         elif not self.headers_complete():
             self.handle_header(line)
 
+    def feed_body(self, data):
+        self.body.write(data)
+        try:
+            while not self.complete():
+                self.attempt_body_parse()
+        except ChunkParsingError:
+            pass
+
+    @classmethod
+    def from_bytes(cls, bytes):
+        self = cls()
+        stream = BytesIO(bytes)
+
+        while not self.headers_complete():
+            line = stream.readline()
+            self.feed_line(line)
+
+        s = stream.read()
+        if s:
+            self.feed_body(s)
+        else:
+            self.complete(True)
+
+        assert self.complete()
+        return self
+
+    def attempt_body_parse(self):
+        raise NotImplementedError()
+
     def handle_status_line(self, sline):
+        assert not self.started()
         self.started(True)
         self.sline = parse_start_line(sline.strip())
 
@@ -69,9 +95,13 @@ class ChunkedMessageParser(object):
             self.headers_complete(True)
             return
 
+        # FIXME: non-crlf-endings
+        if not header.endswith('\r\n'):
+            raise MalformedRequestError
+
         # multiline headers
         if header.startswith(('\t', ' ')):
-            k = self.headers.keys()[-1]
+            k = list(self.headers.keys())[-1]
             v = self.headers.pop(k)
 
             # section 4.2 says that we MAY reduce whitespace down to a single
@@ -95,54 +125,71 @@ class ChunkedMessageParser(object):
 
 
 class ICAPRequestParser(ChunkedMessageParser):
-    @classmethod
-    def from_stream(cls, stream):
-        self = super(ICAPRequestParser, cls).from_stream(stream)
+    def on_headers_complete(self):
+        self.encapsulated_parts = list(
+            convert_offsets_to_sizes(self.encapsulated_header).items())
 
-        # handle a short read.
-        if self is None:
-            return None
-
-        assert self.headers_complete()
-
-        parts = convert_offsets_to_sizes(self.encapsulated_header)
-
-        if self.is_respmod:
-            if 'req-hdr' in parts:
-                data = self.stream.read(parts['req-hdr'])
-                req = HTTPMessageParser.from_bytes(data)
-                req_sline = req.request_line
-                req_headers = req.headers
-            else:
-                from .models import HeadersDict
-                req_sline = None
-                req_headers = HeadersDict()
-
+        parts = self.encapsulated_header
         missing_headers = ((self.is_reqmod and 'req-hdr' not in parts) or
                            (self.is_respmod and 'res-hdr' not in parts))
 
         if missing_headers:
             abort(418)
-        elif self.is_options and set(parts.keys()) == {'null-body'}:
-            m = None
+
+        self.request_parser = HTTPMessageParser()
+        self.response_parser = HTTPMessageParser()
+
+    def attempt_body_parse(self):
+        self.body.seek(0)
+        name, size = self.encapsulated_parts[0]
+        data = self.body.read(size)
+
+        if size > 0 and len(data) != size:
+            raise ChunkParsingError
+
+        if size == 0:
+            assert name == 'null-body'
+            assert not data
+
+        self.encapsulated_parts.pop(0)
+
+        if name in ('req-hdr', 'req-body'):
+            parser = self.request_parser
+        elif name in ('res-hdr', 'res-body'):
+            parser = self.response_parser
+
+        if name in ('req-hdr', 'res-hdr'):
+            buffer = BytesIO(data)
+            for line in buffer:
+                parser.feed_line(line)
+            assert parser.headers_complete()
+        elif name in ('req-body', 'res-body'):
+            assert parser.headers_complete()
+            parser.feed_body(data)
         else:
-            # FIXME: As it stands, we don't actually use req-hdr or res-hdr for
-            # reading the correct amount for headers here, but rely on the
-            # ChunkedMessage parsing.
-            m = HTTPMessageParser.from_stream(self.stream)
+            if self.is_reqmod:
+                parser = self.request_parser
+            else:
+                parser = self.response_parser
+            assert parser.headers_complete()
+            assert name == 'null-body'
+            self.request_parser.complete(True)
+            self.response_parser.complete(True)
 
-        self.http = m
+        self.body = BytesIO(self.body.read())
 
-        if self.is_respmod:
-            m.request_line = req_sline
-            m.request_headers = req_headers
+    def complete(self, set=False):
+        if set:
+            super().complete(set)
+        return super().complete() or (self.headers_complete() and (
+            (self.is_reqmod and self.request_parser.complete()) or
+            (self.is_respmod and self.response_parser.complete()) or
+            (self.is_options)
+        ))
 
-        if m is not None and 'null-body' in parts:
-            # can't use property magic here. Would try and read from stream,
-            # which would break
-            m.body.consumed = True
-            m.body = []
-
+    @classmethod
+    def from_bytes(cls, bytes):
+        self = super().from_bytes(bytes)
         return self.to_icap()
 
     def to_icap(self):
@@ -183,11 +230,57 @@ class ICAPRequestParser(ChunkedMessageParser):
 
 
 class HTTPMessageParser(ChunkedMessageParser):
+    def attempt_body_parse(self):
+        # FIXME: this need a lot of testing. This is going to break on
+        # messages with multiple chunks because we seek back to the beginning
+        # of all data at the end.
+
+        self.body.seek(0)
+
+        try:
+            while True:
+                chunk = self.attempt_parse_chunk()
+                if chunk is None:
+                    break
+                self.chunks.append(chunk)
+        finally:
+            self.body.seek(0, SEEK_END)
+
+    def attempt_parse_chunk(self):
+        line = self.body.readline()
+
+        if not line.endswith(b'\r\n'):
+            return
+        else:
+            try:
+                size, header = line.split(b';', 1)
+            except ValueError:
+                size = line
+                header = b''
+
+            size = int(size, 16)
+            if size:
+                # FIXME: non-crlf-endings
+                data = self.body.read(size+2)  # +2 for CRLF
+
+                if len(data) != size+2:
+                    raise ChunkParsingError
+
+                # FIXME: non-crlf-endings
+                chunk = BodyPart(data[:-2], header.strip())
+                return chunk
+            else:
+                # end of stream, make sure we have trailing newline
+                s = self.body.readline()
+
+                if s.replace(b'\r\n', b''):
+                    raise ChunkParsingError
+
+                self.complete(True)
+
     @classmethod
-    def from_stream(self, stream):
-        self = super(HTTPMessageParser, self).from_stream(stream)
-        if self is None:
-            return None
+    def from_bytes(cls, bytes):
+        self = super().from_bytes(bytes)
         return self.to_http()
 
     def to_http(self):

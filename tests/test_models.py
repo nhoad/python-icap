@@ -59,7 +59,7 @@ class TestICAPRequest(object):
 
     def test_init_defaults(self):
         d = ICAPRequest()
-        assert str(d.request_line) == 'UNKNOWN / ICAP/1.0'
+        assert bytes(d.request_line) == b'UNKNOWN / ICAP/1.0'
 
     def test_is_reqmod(self):
         assert self.request('REQMOD').is_reqmod
@@ -81,13 +81,13 @@ class TestICAPRequest(object):
 class TestICAPResponse(object):
     def test_from_error(self):
         s = ICAPResponse.from_error(200)
-        assert str(s) == 'ICAP/1.0 200 OK\r\n'
+        assert bytes(s) == b'ICAP/1.0 200 OK\r\n'
 
         s = ICAPResponse.from_error(ICAPAbort(200))
-        assert str(s) == 'ICAP/1.0 200 OK\r\n'
+        assert bytes(s) == b'ICAP/1.0 200 OK\r\n'
 
         s = ICAPResponse.from_error(ICAPAbort(204))
-        assert str(s) == 'ICAP/1.0 204 No Modifications Needed\r\n'
+        assert bytes(s) == b'ICAP/1.0 204 No Modifications Needed\r\n'
 
         headers = HeadersDict([
             ('header', 'value'),
@@ -95,4 +95,4 @@ class TestICAPResponse(object):
 
         s = ICAPResponse.from_error(ICAPAbort(204))
         s.headers = headers
-        assert str(s) == 'ICAP/1.0 204 No Modifications Needed\r\nheader: value\r\n'
+        assert bytes(s) == b'ICAP/1.0 204 No Modifications Needed\r\nheader: value\r\n'

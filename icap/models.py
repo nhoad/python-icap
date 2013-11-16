@@ -1,9 +1,10 @@
-from urllib import urlencode
-from urlparse import parse_qs, urlparse
+from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlparse
 
 from collections import namedtuple, OrderedDict
 
 from werkzeug import cached_property
+from .serialization import BodyPart
 
 from .errors import (
     InvalidEncapsulatedHeadersError,
@@ -13,7 +14,6 @@ from .errors import (
     http_response_codes)
 
 from .parsing import ICAPRequestParser
-from .serialization import bodypipe, StreamBodyPipe, MemoryBodyPipe
 
 
 class RequestLine(namedtuple('RequestLine', 'method uri version')):
@@ -44,10 +44,10 @@ class RequestLine(namedtuple('RequestLine', 'method uri version')):
         uri = uri._replace(query=parse_qs(uri.query))
         return super(RequestLine, self).__new__(self, method, uri, version)
 
-    def __str__(self):
+    def __bytes__(self):
         method, uri, version = self
         uri = uri._replace(query=urlencode(uri.query, doseq=True)).geturl()
-        return ' '.join([method, uri, version])
+        return ' '.join([method, uri, version]).encode('utf8')
 
     @property
     def query(self):
@@ -96,8 +96,8 @@ class StatusLine(namedtuple('StatusLine', 'version code reason')):
 
         return super(StatusLine, self).__new__(self, version, code, reason)
 
-    def __str__(self):
-        return ' '.join(map(str, self))
+    def __bytes__(self):
+        return ' '.join(map(str, self)).encode('utf8')
 
 
 class HeadersDict(OrderedDict):
@@ -148,10 +148,10 @@ class HeadersDict(OrderedDict):
         OrderedDict.__setitem__(self, lkey, [(key, value)])
 
     def __eq__(self, other):
-        if self.keys() != other.keys():
+        if list(self.keys()) != list(other.keys()):
             return False
 
-        for key in self.keys():
+        for key in list(self.keys()):
             value = OrderedDict.__getitem__(self, key)
             ovalue = OrderedDict.__getitem__(other, key)
 
@@ -160,15 +160,15 @@ class HeadersDict(OrderedDict):
 
         return True
 
-    def __str__(self):
+    def __bytes__(self):
         """Return a string of the headers, suitable for writing to a stream."""
         if not self:
-            return ''
+            return b''
 
-        s = '\r\n'.join(
-            ': '.join(v) for k in self
+        s = b'\r\n'.join(
+            ': '.join(v).encode('utf8') for k in self
             for v in OrderedDict.__getitem__(self, k)
-        ) + '\r\n'
+        ) + b'\r\n'
 
         return s
 
@@ -242,7 +242,18 @@ class ICAPRequest(ICAPMessage):
         """
         assert isinstance(parser, ICAPRequestParser)
 
-        self = cls(parser.sline, parser.headers, parser.http)
+        headers = parser.headers
+
+        if parser.is_options:
+            self = cls(parser.sline, headers)
+        elif parser.is_reqmod:
+            self = cls(parser.sline, headers, parser.request_parser.to_http())
+        elif parser.is_respmod:
+            self = cls(parser.sline, headers, parser.response_parser.to_http())
+            if 'req-hdr' in parser.encapsulated_header:
+                request = parser.request_parser.to_http()
+                self.http.request_line = request.request_line
+                self.http.request_headers = request.headers
         return self
 
     @cached_property
@@ -280,8 +291,8 @@ class ICAPResponse(ICAPMessage):
         super(ICAPResponse, self).__init__(*args, **kwargs)
         self.status_line = status_line or StatusLine('ICAP/1.0', 200, 'OK')
 
-    def __str__(self):
-        return '\r\n'.join([' '.join(map(str, self.status_line)), str(self.headers)])
+    def __bytes__(self):
+        return b'\r\n'.join([' '.join(map(str, self.status_line)).encode('utf8'), bytes(self.headers)])
 
     @classmethod
     def from_error(cls, error):
@@ -302,7 +313,6 @@ class HTTPMessage(object):
     `~icap.models.HTTPResponse` instead.
 
     """
-    __body = None
 
     def __init__(self, headers=None, body=None):
         """If ``headers`` is not given, default to an empty instance of
@@ -312,38 +322,33 @@ class HTTPMessage(object):
         stream, list of strings, a generator or a string.
         """
         self.headers = headers or HeadersDict()
-        self.body = body
+        self.body = body or []
 
     @property
     def body(self):
-        """Property for wrapping the body of a HTTP message.
-
-        Setting this property will perform necessary wrapping to ensure it will
-        be an instance of `~icap.serialization.StreamBodyPipe` or `icap.serialization.MemoryBodyPipe` when accessed.
-
-        When setting this property, if the old value is a
-        `~icap.serialization.StreamBodyPipe`, i.e. a container around an object
-        with `readline()` and `read()` methods, the old stream will be consumed
-        first.
-        """
-        return self.__body
+        return self._body
 
     @body.setter
     def body(self, value):
-        if not isinstance(value, (StreamBodyPipe, MemoryBodyPipe)):
-            value = bodypipe(value or [])
+        if isinstance(value, bytes):
+            values = [BodyPart(value, b'')]
+        else:
+            assert not isinstance(value, str)
+            values = [
+                v if isinstance(v, BodyPart) else BodyPart(v, b'')
+                for v in value
+            ]
+            assert all(isinstance(v.content, bytes) for v in values)
 
-        if isinstance(self.__body, StreamBodyPipe):
-            self.__body.consume()
-        self.__body = value
+        self._body = values
 
-    def __str__(self):
+    def __bytes__(self):
         if self.is_request:
             field = self.request_line
         else:
             field = self.status_line
 
-        return '\r\n'.join([str(field), str(self.headers)])
+        return b'\r\n'.join([bytes(field), bytes(self.headers)])
 
     @cached_property
     def is_request(self):
@@ -386,7 +391,9 @@ class HTTPRequest(HTTPMessage):
         """
         assert not isinstance(parser, ICAPRequestParser)
         assert parser.is_request
-        return cls(parser.sline, parser.headers, parser.stream)
+        f = cls(parser.sline, parser.headers, parser.chunks)
+
+        return f
 
 
 class HTTPResponse(HTTPMessage):
@@ -413,7 +420,7 @@ class HTTPResponse(HTTPMessage):
         """
         assert not isinstance(parser, ICAPRequestParser)
         assert parser.is_response
-        return cls(parser.sline, parser.headers, parser.stream)
+        return cls(parser.sline, parser.headers, parser.chunks)
 
 
 class Session(dict):

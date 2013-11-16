@@ -1,7 +1,7 @@
 import fnmatch
 import functools
 import re
-import urlparse
+import urllib.parse
 
 
 @functools.total_ordering
@@ -27,7 +27,7 @@ class RegexCriteria(BaseCriteria):
         self.regex = re.compile(regex)
 
     def __call__(self, request):
-        url = urlparse.urlunparse(request.session['url'])
+        url = urllib.parse.urlunparse(request.session['url'])
         return bool(self.regex.match(url))
 
 

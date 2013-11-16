@@ -6,15 +6,8 @@ from icap.parsing import HTTPMessageParser, ICAPRequestParser
 from icap.errors import MalformedRequestError, InvalidEncapsulatedHeadersError, ICAPAbort
 
 
-def data_string(req_line, path):
-    parts = req_line, open('data/' + path).read()
-    return '\r\n'.join(p for p in parts if p)
-
-
-def assert_stream_consumed(message):
-    if not isinstance(message, HTTPMessage):
-        message = message.http
-    assert message.body.stream.read() == ''
+def data_string(path):
+    return open('data/' + path, 'rb').read()
 
 
 def assert_bodies_match(
@@ -27,13 +20,14 @@ def assert_bodies_match(
     else:
         chunks = list(message.body)
 
-    if isinstance(expected_bodies, basestring):
+    assert not isinstance(expected_bodies, str)
+    if isinstance(expected_bodies, bytes):
         expected_bodies = [expected_bodies]
 
     assert [b.content for b in chunks] == expected_bodies
 
     if total_length:
-        assert total_length == len(''.join(b.content for b in chunks))
+        assert total_length == len(b''.join(b.content for b in chunks))
 
     if headers:
         assert len(chunks) == len(headers)
@@ -42,12 +36,12 @@ def assert_bodies_match(
 
 
 @pytest.mark.parametrize(('input_bytes', 'expected_values'), [
-    ('GET / HTTP/1.1\r\n\r\n4\r\nWiki\r\n5\r\npedia\r\nE\r\n in\r\n\r\nchunks.\r\n0\r\n\r\n',
-        dict(values=['Wiki', 'pedia', ' in\r\n\r\nchunks.'])),
-    ('GET / HTTP/1.1\r\n\r\n4;bar\r\nWiki\r\n5;foo\r\npedia\r\nE;qwer\r\n in\r\n\r\nchunks.\r\n0\r\n\r\n',
-        dict(values=['Wiki', 'pedia', ' in\r\n\r\nchunks.'], headers=['bar', 'foo', 'qwer'])),
-    ('GET / HTTP/1.1\r\n\r\n4;bar\r\nWiki\r\n5;foo\r\npedia\r\nE;qwer\r\n in\r\n\r\nchunks.\r\n0\r\n\r\n',
-        dict(values=['Wiki', 'pedia', ' in\r\n\r\nchunks.'], headers=['bar', 'foo', 'qwer'])),
+    (b'GET / HTTP/1.1\r\n\r\n4\r\nWiki\r\n5\r\npedia\r\nE\r\n in\r\n\r\nchunks.\r\n0\r\n\r\n',
+        dict(values=[b'Wiki', b'pedia', b' in\r\n\r\nchunks.'])),
+    (b'GET / HTTP/1.1\r\n\r\n4;bar\r\nWiki\r\n5;foo\r\npedia\r\nE;qwer\r\n in\r\n\r\nchunks.\r\n0\r\n\r\n',
+        dict(values=[b'Wiki', b'pedia', b' in\r\n\r\nchunks.'], headers=[b'bar', b'foo', b'qwer'])),
+    (b'GET / HTTP/1.1\r\n\r\n4;bar\r\nWiki\r\n5;foo\r\npedia\r\nE;qwer\r\n in\r\n\r\nchunks.\r\n0\r\n\r\n',
+        dict(values=[b'Wiki', b'pedia', b' in\r\n\r\nchunks.'], headers=[b'bar', b'foo', b'qwer'])),
 ])
 def test_chunked_messages(input_bytes, expected_values):
     m = HTTPMessageParser.from_bytes(input_bytes)
@@ -55,40 +49,38 @@ def test_chunked_messages(input_bytes, expected_values):
     assert_bodies_match(
         m, expected_values.get('values'),
         headers=expected_values.get('headers'), total_length=23)
-    assert_stream_consumed(m)
 
 
 def test_multiline_headers():
     s = (
-        'GET / HTTP/1.1\r\n'
-        'Great-header: foo\r\n'
-        '\t       bar\r\n'
-        '\r\n'
+        b'OPTIONS / ICAP/1.0\r\n'
+        b'Great-header: foo\r\n'
+        b'\t       bar\r\n'
+        b'\r\n'
     )
-    m = HTTPMessageParser.from_bytes(s)
+    m = ICAPRequestParser.from_bytes(s)
     assert m.headers['great-header'] == 'foo bar'
 
 
 def test_icap_parsing_simple():
-    expected = data_string('', 'request_with_http_response_and_payload.request')
+    expected = data_string('request_with_http_response_and_payload.request')
 
     m = ICAPRequestParser.from_bytes(expected)
 
     assert isinstance(m, ICAPRequest)
 
-    print '-----'
-    print expected
-    print '-----'
-    print 'parent headers', m.headers
-    print 'child headers', m.http.headers
-    assert_bodies_match(m, 'this is a payload')
-    assert_stream_consumed(m)
+    print('-----')
+    print(expected)
+    print('-----')
+    print('parent headers', m.headers)
+    print('child headers', m.http.headers)
+    assert_bodies_match(m, b'this is a payload')
 
 
 def test_icap_parsing_complex():
     'Tests req-hdr, res-hdr, res-body'
 
-    expected = data_string('', 'icap_request_with_two_header_sets.request')
+    expected = data_string('icap_request_with_two_header_sets.request')
     expected_headers = HeadersDict([
         ('Host', 'icap.example.org'),
         ('Encapsulated', 'req-hdr=0, res-hdr=137, res-body=296'),
@@ -114,16 +106,15 @@ def test_icap_parsing_complex():
 
     child = m.http
 
-    assert str(m.request_line) == 'RESPMOD icap://icap.example.org/respmod ICAP/1.0'
-    assert str(child.request_line) == 'GET /origin-resource HTTP/1.1'
-    assert str(child.status_line) == 'HTTP/1.1 200 OK'
+    assert bytes(m.request_line) == b'RESPMOD icap://icap.example.org/respmod ICAP/1.0'
+    assert bytes(child.request_line) == b'GET /origin-resource HTTP/1.1'
+    assert bytes(child.status_line) == b'HTTP/1.1 200 OK'
 
     assert m.headers == expected_headers
     assert child.request_headers == expected_child_request_headers
     assert child.headers == expected_child_headers
 
-    assert_bodies_match(m, 'This is data that was returned by an origin server.')
-    assert_stream_consumed(m)
+    assert_bodies_match(m, b'This is data that was returned by an origin server.')
 
 
 @pytest.mark.parametrize(('test_file', 'expected_values'), [
@@ -134,12 +125,12 @@ def test_icap_parsing_complex():
 ])
 def test_icap_parsing_stupid(test_file, expected_values):
     '''Test for the stupidest combinations of Encapsulated headers that I can come up with.'''
-    data = data_string('', test_file)
+    data = data_string(test_file)
 
-    print test_file
-    print '----'
-    print data
-    print '----'
+    print(test_file)
+    print('----')
+    print(data)
+    print('----')
 
     try:
         ICAPRequestParser.from_bytes(data)
@@ -148,10 +139,10 @@ def test_icap_parsing_stupid(test_file, expected_values):
 
 
 @pytest.mark.parametrize(('input_bytes', 'expected_request'), [
-    ('GET / HTTP/1.1\r\n\r\n', True),
-    ('HTTP/1.1 200 OK\r\n\r\n', False),
-    ('RESPMOD / ICAP/1.1\r\n\r\n', True),
-    ('ICAP/1.1 200 OK\r\n\r\n', False),
+    (b'GET / HTTP/1.1\r\n\r\n', True),
+    (b'HTTP/1.1 200 OK\r\n\r\n', False),
+    (b'RESPMOD / ICAP/1.1\r\n\r\n', True),
+    (b'ICAP/1.1 200 OK\r\n\r\n', False),
 ])
 def test_sline_matching(input_bytes, expected_request):
     m = HTTPMessageParser.from_bytes(input_bytes)
@@ -166,13 +157,12 @@ def test_sline_matching(input_bytes, expected_request):
         assert m.is_response
         assert not m.is_request
         assert isinstance(m.status_line, StatusLine)
-    assert_stream_consumed(m)
 
 
 @pytest.mark.parametrize(('input_bytes', 'expected_fail'), [
-    ('RESPMOD / ICAP/1.1\r\n\r\n', True),
-    ('REQMOD / ICAP/1.1\r\n\r\n', True),
-    ('OPTIONS / ICAP/1.1\r\n\r\n', False),
+    (b'RESPMOD / ICAP/1.1\r\n\r\n', True),
+    (b'REQMOD / ICAP/1.1\r\n\r\n', True),
+    (b'OPTIONS / ICAP/1.1\r\n\r\n', False),
 ])
 def test_encapsulated_header_requirement(input_bytes, expected_fail):
     try:
@@ -186,23 +176,31 @@ def test_encapsulated_header_requirement(input_bytes, expected_fail):
 
 
 def test_short_read_http_headers():
-    input_bytes = 'GET / HTTP/1.1\r\nHea'
-    m = HTTPMessageParser.from_bytes(input_bytes)
-    assert m is None
+    input_bytes = b'GET / HTTP/1.1\r\nHea'
+    try:
+        HTTPMessageParser.from_bytes(input_bytes)
+    except MalformedRequestError:
+        pass
+    else:  # pragma: no cover
+        assert False
 
 
 def test_short_read_icap_headers():
-    input_bytes = 'REQMOD / ICAP/1.1\r\nHea'
-    m = ICAPRequestParser.from_bytes(input_bytes)
-    assert m is None
+    input_bytes = b'REQMOD / ICAP/1.1\r\nHea'
+    try:
+        ICAPRequestParser.from_bytes(input_bytes)
+    except MalformedRequestError:
+        pass
+    else:  # pragma: no cover
+        assert False
 
 
 @pytest.mark.parametrize(('input_bytes'), [
-    'GET / \r\n',
-    'HTTP/1.1 200 \r\n',
-    'HTTP/1.1 20g0 OK\r\n',
-    'RESPMOD / \r\n',
-    'ICAP/1.1 OK\r\n\r\n',
+    b'GET / \r\n',
+    b'HTTP/1.1 200 \r\n',
+    b'HTTP/1.1 20g0 OK\r\n',
+    b'RESPMOD / \r\n',
+    b'ICAP/1.1 OK\r\n\r\n',
 ])
 def test_malformed_request_line(input_bytes):
     try:
@@ -231,7 +229,7 @@ def test_HeadersDict():
 
     b = HeadersDict()
 
-    for i in xrange(6):
+    for i in range(6):
         b['Foo'] = 'bar'
 
     a = HeadersDict([
@@ -255,7 +253,7 @@ def test_HeadersDict():
     assert a != c
     assert c != d
 
-    assert str(a) == '\r\n'.join(['Foo: bar']*6) + '\r\n'
-    assert str(c) == 'lamp: i love lamp\r\n'
-    assert str(d) == 'lamp: i dont love lamp\r\n'
-    assert str(HeadersDict()) == ''
+    assert bytes(a) == '\r\n'.join(['Foo: bar']*6).encode('utf8') + b'\r\n'
+    assert bytes(c) == b'lamp: i love lamp\r\n'
+    assert bytes(d) == b'lamp: i dont love lamp\r\n'
+    assert bytes(HeadersDict()) == b''
