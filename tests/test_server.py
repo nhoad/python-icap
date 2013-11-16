@@ -204,7 +204,7 @@ class TestICAPProtocolFactory(object):
         Exception,
         BaseException,
     ])
-    def test_handle_conn__handles_exceptions(self, exception):
+    def test_handle_request__handles_exceptions(self, exception):
         input_bytes = data_string('icap_request_with_two_header_sets.request')
 
         server = ICAPProtocolFactory()
@@ -262,7 +262,7 @@ class TestICAPProtocolFactory(object):
 
         return transaction
 
-    def test_handle_conn__options_request_no_handlers(self):
+    def test_handle_request__options_request_no_handlers(self):
         input_bytes = data_string('options_request.request')
 
         s = self.run_test(ICAPProtocolFactory(), input_bytes)
@@ -274,7 +274,7 @@ class TestICAPProtocolFactory(object):
         assert b'Date: ' in s
         assert b'Encapsulated: ' in s
 
-    def test_handle_conn__options_request(self):
+    def test_handle_request__options_request(self):
         input_bytes = data_string('options_request.request')
         server = self.dummy_server()
         s = self.run_test(server, input_bytes)
@@ -286,7 +286,7 @@ class TestICAPProtocolFactory(object):
         assert b'Date: ' in s
         assert b'Encapsulated: ' in s
 
-    def test_handle_conn__options_request_failure(self):
+    def test_handle_request__options_request_failure(self):
         input_bytes = data_string('options_request.request')
 
         server = self.dummy_server()
@@ -300,7 +300,7 @@ class TestICAPProtocolFactory(object):
         print(s)
         assert b'ICAP/1.0 200 OK' in s
 
-    def test_handle_conn__options_request_extra_headers(self):
+    def test_handle_request__options_request_extra_headers(self):
         input_bytes = data_string('options_request.request')
         server = self.dummy_server()
 
@@ -322,7 +322,7 @@ class TestICAPProtocolFactory(object):
         assert b'Transfer-Complete: *' in s
         assert b'Options-TTL: 3600' in s
 
-    def test_handle_conn__response_for_reqmod(self):
+    def test_handle_request__response_for_reqmod(self):
         input_bytes = data_string('request_with_http_request_no_payload.request')
 
         server = ICAPProtocolFactory()
@@ -335,7 +335,7 @@ class TestICAPProtocolFactory(object):
         assert b"HTTP/1.1 200 OK" in transaction
         assert b"cool body" in transaction
 
-    def test_handle_conn__request_for_reqmod(self):
+    def test_handle_request__request_for_reqmod(self):
         input_bytes = data_string('request_with_http_request_no_payload.request')
 
         server = ICAPProtocolFactory()
@@ -348,7 +348,7 @@ class TestICAPProtocolFactory(object):
 
         assert b"cool body" in transaction
 
-    def test_handle_conn__request_for_respmod(self):
+    def test_handle_request__request_for_respmod(self):
         input_bytes = data_string('icap_request_with_two_header_sets.request')
 
         server = ICAPProtocolFactory()
@@ -362,7 +362,7 @@ class TestICAPProtocolFactory(object):
         assert b"500 Internal Server Error" in transaction
         assert transaction.count(b"This is data that was returned by an origin server") == 0
 
-    def test_handle_conn__response_for_respmod(self):
+    def test_handle_request__response_for_respmod(self):
         input_bytes = data_string('icap_request_with_two_header_sets.request')
 
         server = ICAPProtocolFactory()
@@ -388,7 +388,7 @@ class TestICAPProtocolFactory(object):
         (True, False),
         (True, True),
     ])
-    def test_handle_conn__no_handler(self, force_204, strict_when_missing_service):
+    def test_handle_request__no_handler(self, force_204, strict_when_missing_service):
         input_bytes = data_string('icap_request_with_two_header_sets.request')
 
         server = ICAPProtocolFactory(strict_when_missing_service=strict_when_missing_service)
@@ -408,7 +408,7 @@ class TestICAPProtocolFactory(object):
                 assert b'200 OK' in transaction
 
     @pytest.mark.parametrize('force_204', [True, False])
-    def test_handle_conn__empty_return_forces_reserialization(self, force_204):
+    def test_handle_request__empty_return_forces_reserialization(self, force_204):
         input_bytes = data_string('icap_request_with_two_header_sets.request')
 
         server = ICAPProtocolFactory()
@@ -422,7 +422,7 @@ class TestICAPProtocolFactory(object):
         assert b'200 OK' in transaction
         assert transaction.count(b'33; lamps') == 1
 
-    def test_handle_conn__string_return(self):
+    def test_handle_request__string_return(self):
         input_bytes = data_string('icap_request_with_two_header_sets.request')
 
         server = ICAPProtocolFactory()
@@ -435,7 +435,7 @@ class TestICAPProtocolFactory(object):
 
         assert b"fooooooooooooooo" in transaction
 
-    def test_handle_conn__list_return(self):
+    def test_handle_request__list_return(self):
         input_bytes = data_string('icap_request_with_two_header_sets.request')
 
         server = ICAPProtocolFactory()
