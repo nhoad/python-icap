@@ -450,3 +450,17 @@ class TestICAPProtocolFactory(object):
         assert b"foo" in transaction
         assert b"bar" in transaction
         assert b"baz" in transaction
+
+    def test_handle_request__raw(self):
+        input_bytes = data_string('icap_request_with_two_header_sets.request')
+
+        server = ICAPProtocolFactory()
+
+        @handler(DomainCriteria('www.origin-server.com'), raw=True)
+        def respmod(request):
+            assert isinstance(request, ICAPRequest)
+            return b"fooooooooooooooo"
+
+        transaction = self.run_test(server, input_bytes, assert_mutated=True)
+
+        assert b"fooooooooooooooo" in transaction

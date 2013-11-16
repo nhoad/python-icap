@@ -248,9 +248,13 @@ class ICAPProtocolFactory(object):
 
     @asyncio.coroutine
     def handle_mod(self, request, handler, raw):
-        # FIXME: raw support
         # FIXME: Session support.
-        response = yield from maybe_coroutine(handler(request.http))
+        if raw:
+            f = handler(request)
+        else:
+            f = handler(request.http)
+
+        response = yield from maybe_coroutine(f)
         if response is None:
             response = request.http
         elif isinstance(response, HTTPMessage):
