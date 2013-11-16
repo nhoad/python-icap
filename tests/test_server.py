@@ -242,7 +242,8 @@ class TestICAPProtocolFactory(object):
 
         f = protocol.data_received(input_bytes)
 
-        asyncio.get_event_loop().run_until_complete(f)
+        if f is not None:
+            asyncio.get_event_loop().run_until_complete(f)
 
         transaction = protocol.transport.getvalue()
 
@@ -254,7 +255,6 @@ class TestICAPProtocolFactory(object):
         assert transaction.count(b'ISTag: ') == 1
 
         if assert_mutated and not force_204:
-            # WRONG
             if not force_204 and not multi_chunk:
                 assert transaction.count(b'Content-Length: ') == 1
             else:

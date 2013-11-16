@@ -100,7 +100,6 @@ class ICAPProtocol(asyncio.Protocol):
         self.transport = transport
         self.s = time.time()
 
-    @task
     def data_received(self, data):
         start = time.time()
         self.transport.pause_reading()
@@ -111,34 +110,30 @@ class ICAPProtocol(asyncio.Protocol):
         if self.parser.headers_complete():
             self.raw_data_received(self._buffer.read())
         else:
-            yield from self.lines_received()
-            return
+            d = self.lines_received()
+            if d:
+                self.raw_data_received(d)
 
         p = self.parser
 
         if p.headers_complete() and p.is_options and 'encapsulated' not in p.headers:
             p.complete(True)
 
-        if p.complete():
-            yield from self.handle_request()
-            self.s = time.time()
-
         self.transport.resume_reading()
-        end = time.time()
+
+        if p.complete():
+            return asyncio.async(self.handle_request())
 
     def line_received(self, line):
         self.parser.feed_line(line)
 
-    @asyncio.coroutine
     def lines_received(self):
         try:
             for line in self._buffer:
                 self.line_received(line)
                 if self.parser.headers_complete():
                     d = self._buffer.read()
-                    self._buffer = BytesIO(d)
-                    self.transport.resume_reading()
-                    yield from self.data_received(b'')
+                    return d
         except ICAPAbort as e:
             self.respond_with_error(e, should_close=True)
         except (ICAPAbort, MalformedRequestError) as e:

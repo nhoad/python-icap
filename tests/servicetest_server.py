@@ -11,7 +11,7 @@ import time
 
 from signal import SIGINT
 
-from icap import run, handler
+from icap import run, handler, stop
 
 
 logging.basicConfig(stream=sys.stderr)
@@ -25,16 +25,17 @@ def start_client(pid):
 
     loop = asyncio.get_event_loop()
 
-    COUNT = 10
+    fastest = 1.0
+    slowest = 0.0
+    total = 0
 
     class ICAPClientTestProtocol(asyncio.Protocol):
+        def __init__(self, future):
+            self.future = future
+
         def connection_made(self, transport):
             self.transport = transport
             self.count = 0
-
-            self.fastest = 1.0
-            self.slowest = 0.0
-            self.total = 0.0
 
             self.send_request()
 
@@ -46,30 +47,56 @@ def start_client(pid):
             self.transport.write(sent)
 
         def data_received(self, data):
+            nonlocal fastest, slowest
+
             self.data += data
 
             if len(self.data) == 314:
                 n = time.time() - self.start
-                print('client %.5f' % n)
 
-                if self.count == COUNT:
-                    self.transport.close()
-                    loop.stop()
-                    print(
-                        '%d requests took %f seconds (average=%f, fastest=%f, slowest=%f)'
-                            % (COUNT, self.total, (self.total/COUNT),
-                               self.fastest, self.slowest))
+                if self.count == per_connection:
+                    self.close()
                 else:
                     self.send_request()
 
-                self.fastest = min(self.fastest, n)
-                self.slowest = max(self.slowest, n)
-                self.total += n
+                fastest = min(fastest, n)
+                slowest = max(slowest, n)
 
-    f = loop.create_connection(ICAPClientTestProtocol, '127.0.0.1', 1334)
-    loop.run_until_complete(f)
-    loop.run_forever()
-    os.kill(pid, SIGINT)
+        def close(self):
+            nonlocal total
+            total += self.count
+            self.future.set_result("Lamp")
+            self.transport.close()
+
+    clients = 100
+    per_connection = 10
+
+    s = time.time()
+
+    futures = []
+
+    class ICAPFactory(object):
+        def __call__(self):
+            nonlocal futures
+            future = asyncio.Future()
+            futures.append(future)
+            return ICAPClientTestProtocol(future)
+
+    try:
+        loop.run_until_complete(asyncio.wait([
+            loop.create_connection(ICAPFactory(), '127.0.0.1', 1334)
+            for i in range(clients)
+        ]))
+
+        loop.run_until_complete(asyncio.wait(futures))
+
+        running_time = time.time() - s
+
+        print('%d requests took %f seconds (average=%f, fastest=%f, slowest=%f)'
+              % (total, running_time, running_time/total, fastest, slowest))
+        assert running_time < 1.0
+    finally:
+        os.kill(pid, SIGINT)
 
 
 def main():
@@ -79,6 +106,8 @@ def main():
 
     pid = os.fork()
     if pid == 0:
+        e = asyncio.get_event_loop()
+        e.add_signal_handler(SIGINT, lambda *args: os._exit(0))
         run(port=1334)
     else:
         start_client(pid)
