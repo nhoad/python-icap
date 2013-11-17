@@ -109,11 +109,11 @@ class TestICAPProtocolFactory(object):
 
         print(list(_HANDLERS.keys()))
 
-        mock_request = MagicMock(is_reqmod=True)
+        mock_request = MagicMock(is_reqmod=True, is_options=False)
         mock_request.request_line.uri.path = '/lamps/reqmod'
         assert get_handler(mock_request)[0] == reqmod
 
-        mock_request = MagicMock(is_reqmod=False)
+        mock_request = MagicMock(is_reqmod=False, is_options=False)
         mock_request.request_line.uri.path = '/blarg/respmod'
         assert get_handler(mock_request)[0] == respmod
 
@@ -122,7 +122,7 @@ class TestICAPProtocolFactory(object):
         def reqmod(self, *args):
             pass  # pragma: no cover
 
-        request = MagicMock(http='http')
+        request = MagicMock(http='http', is_options=False)
         request.request_line.uri.path = '/reqmod'
 
         assert get_handler(request)[0] == reqmod
@@ -132,7 +132,7 @@ class TestICAPProtocolFactory(object):
         def respmod(self, *args):
             pass  # pragma: no cover
 
-        request = MagicMock(is_reqmod=False, http='http')
+        request = MagicMock(is_reqmod=False, http='http', is_options=False)
         request.request_line.uri.path = '/respmod'
 
         assert get_handler(request)[0] == respmod
@@ -146,11 +146,11 @@ class TestICAPProtocolFactory(object):
         def reqmod(self, *args):
             pass  # pragma: no cover
 
-        request = MagicMock(is_reqmod=False, http='http')
+        request = MagicMock(is_reqmod=False, http='http', is_options=False)
         request.request_line.uri.path = '/respmod'
         assert get_handler(request)[0] == respmod
 
-        request = MagicMock(http='http')
+        request = MagicMock(http='http', is_options=False)
         request.request_line.uri.path = '/reqmod'
         assert get_handler(request)[0] == reqmod
 
@@ -165,8 +165,8 @@ class TestICAPProtocolFactory(object):
 
         print(_HANDLERS)
 
-        reqmod = MagicMock(http='http')
-        respmod = MagicMock(is_reqmod=False, http='http')
+        reqmod = MagicMock(http='http', is_options=False)
+        respmod = MagicMock(is_reqmod=False, http='http', is_options=False)
         reqmod.request_line.uri.path = '/reqmod'
         respmod.request_line.uri.path = '/respmod'
 
@@ -347,6 +347,23 @@ class TestICAPProtocolFactory(object):
 
         assert b"cool body" in transaction
 
+    @pytest.mark.parametrize(('force_204'), [False, True])
+    def test_handle_request__no_match_204(self, force_204):
+        input_bytes = data_string('request_with_http_request_no_payload.request')
+
+        server = ICAPProtocolFactory()
+
+        @handler(lambda req: False)
+        def reqmod(request):
+            return
+
+        transaction = self.run_test(server, input_bytes, force_204=force_204)
+
+        if force_204:
+            assert b"ICAP/1.0 204 No Modifications Needed" in transaction
+        else:
+            assert b"ICAP/1.0 200 OK" in transaction
+
     def test_handle_request__request_for_respmod(self):
         input_bytes = data_string('icap_request_with_two_header_sets.request')
 
@@ -380,31 +397,6 @@ class TestICAPProtocolFactory(object):
         assert b"Foo: bar" in transaction
         assert b"Bar: baz" in transaction
         assert transaction.count(b"This is data that was returned by an origin server") == 0
-
-    @pytest.mark.parametrize(('force_204', 'strict_when_missing_service'), [
-        (False, False),
-        (False, True),
-        (True, False),
-        (True, True),
-    ])
-    def test_handle_request__no_handler(self, force_204, strict_when_missing_service):
-        input_bytes = data_string('icap_request_with_two_header_sets.request')
-
-        server = ICAPProtocolFactory(strict_when_missing_service=strict_when_missing_service)
-        transaction = self.run_test(server, input_bytes, force_204=force_204)
-
-        print(force_204, strict_when_missing_service)
-
-        if force_204:
-            if strict_when_missing_service:
-                assert b'404 ICAP Service Not Found' in transaction
-            else:
-                assert b'204 No Modifications Needed' in transaction
-        else:
-            if strict_when_missing_service:
-                assert b'404 ICAP Service Not Found' in transaction
-            else:
-                assert b'200 OK' in transaction
 
     @pytest.mark.parametrize('force_204', [True, False])
     def test_handle_request__empty_return_forces_reserialization(self, force_204):

@@ -82,32 +82,44 @@ class AlwaysCriteria(BaseCriteria):
         return True
 
 
-def get_handler(request, strict_when_missing_service=False):
+def get_handler(request):
+    """Return the handler for a given request, and whether it should be given
+    the raw ICAP request.
+
+    Will abort with the following codes in given conditions:
+
+        404: no handlers at a given endpoint.
+        204: there are handlers at a given endpoint, but none of them matched.
+
+    """
     uri = request.request_line.uri
     path = uri.path
     services = _HANDLERS.get(path)
 
     if not services:
         # RFC3507 says we should abort with 404 if there are no handlers at
-        # a given resource - this is fine except when the client (Squid, in
-        # this case) relays ICAP 404 responses to the client as internal
-        # errors.
-        abort(404 if strict_when_missing_service or request.is_options else 204)
+        # a given resource. The most common ICAP client, Squid, doesn't handle
+        # this very well - it relays them to the client as internal errors.
+        # Previously this was configurable to work around that, however it
+        # actually means there's a configuration error on the admin's behalf,
+        # so I've decided to make the 404 response mandatory.
+        abort(404)
 
     for criteria, handler, raw in services:
         if criteria(request):
             return handler, raw
 
-    if request.is_options:
-        handler = lambda req: None
-        return handler, False
-
     abort(204)
 
 
 def sort_handlers():
+    """Sort _HANDLERS values by priority.
+
+    You should not use this directly.
+
+    """
     for key, items in _HANDLERS.items():
-        _HANDLERS[key] = sorted(items, key=lambda f: f[0].priority, reverse=True)
+        _HANDLERS[key] = sorted(items, key=lambda f: f[0], reverse=True)
 
 
 def handler(criteria=None, name='', raw=False):

@@ -89,7 +89,7 @@ class ICAPProtocol(asyncio.Protocol):
 
         try:
             self.factory.validate_request(request)
-            handler, raw = get_handler(request, self.factory.strict_when_missing_service)
+            handler, raw = get_handler(request)
 
             hooks['before_handling'](request)
 
@@ -123,19 +123,7 @@ class ICAPProtocol(asyncio.Protocol):
 
 
 class ICAPProtocolFactory(object):
-    def __init__(self, strict_when_missing_service=False):
-        """
-        ``strict_when_missing_service`` - Decide how to respond when no
-        internal services were found matching the given URI of a request (e.g.
-        /respmod when the server only supports reqmods). If True, then respond
-        with a 404, as decreed by RFC3507. Otherwise (by default), respond with
-        204/200. This is useful when the client doesn't handle a 404 very well,
-        but it is an indication that the client may be sending more traffic to
-        the ICAP server than it should.
-
-        """
-        self.strict_when_missing_service = strict_when_missing_service
-
+    def __init__(self):
         fallback_is_tag = uuid.uuid4().hex
 
         @hooks('is_tag', default=fallback_is_tag)

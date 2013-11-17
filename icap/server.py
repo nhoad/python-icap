@@ -86,6 +86,7 @@ hooks = Hooks()
 
 _server = None
 
+
 def run(host='127.0.0.1', port=1334, *, factory_class=None, **kwargs):
     """Run the ICAP server.
 
