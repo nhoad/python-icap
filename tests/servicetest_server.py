@@ -94,13 +94,13 @@ def start_client(pid):
 
         print('%d requests took %f seconds (average=%f, fastest=%f, slowest=%f)'
               % (total, running_time, running_time/total, fastest, slowest))
-        assert running_time < 1.0
+        assert running_time < 1.01
     finally:
         os.kill(pid, SIGINT)
 
 
 def main():
-    @handler(lambda *args: True)
+    @handler()
     def respmod(request):
         request.body = b'cool woo'
 

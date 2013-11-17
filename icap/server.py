@@ -1,3 +1,5 @@
+import asyncio
+
 __all__ = [
     'hooks',
     'run',

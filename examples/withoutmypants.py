@@ -1,8 +1,7 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
-from asyncio import get_event_loop
+from icap import DomainCriteria, handler, run
 
-from icap import ICAPProtocolFactory, DomainCriteria, handler, run
 
 @handler(DomainCriteria('*google.*'))
 def reqmod(request):
