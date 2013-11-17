@@ -1,12 +1,18 @@
+__all__ = [
+    'hooks',
+    'run',
+    'stop',
+]
+
+
 class Hooks(dict):
     """Dispatch class for providing hooks at certain parts of the ICAP
     transaction.
 
-    Used on a server instance like so:
+    Used like so:
 
-    >>> from icap.server import Server
-    >>> server = Server()
-    >>> @server.hooks('options_headers')
+    >>> from icap import hooks
+    >>> @hooks('options_headers')
     >>> def extra_headers():
     ...     return {'new': 'headers'}
 
@@ -23,6 +29,17 @@ class Hooks(dict):
             response. String will be sliced to maximum of 32 bytes.
 
             arguments: request object, may be None.
+
+        before_handling:
+            Called with an ICAP request before it is passed to a handler.
+
+            arguments: ICAP request object.
+
+        before_serialization:
+            Called with an ICAP request and response before serializing the
+            response.
+
+            arguments: ICAP request object, ICAP response object.
 
     """
     def __getitem__(self, name):
