@@ -3,6 +3,7 @@ import urllib.parse
 from mock import MagicMock
 
 from icap import RegexCriteria, DomainCriteria
+from icap.criteria import _HANDLERS, sort_handlers
 
 
 class FakeRequest(object):
@@ -70,3 +71,19 @@ def test_RegexCriteria():
     assert r(FakeRequest('http://google.com3'))
     assert r(FakeRequest('http://google.com4'))
     assert not r(FakeRequest('http://google.com5'))
+
+
+def test_sort_handlers():
+    _HANDLERS.clear()
+
+    _HANDLERS['foo'] = [
+        (DomainCriteria('google.com'), None, None),
+        (RegexCriteria('.*'), None, None),
+    ]
+
+    sort_handlers()
+
+    first, second = _HANDLERS['foo']
+
+    assert isinstance(first[0], RegexCriteria)
+    assert isinstance(second[0], DomainCriteria)
