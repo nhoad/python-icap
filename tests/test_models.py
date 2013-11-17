@@ -1,4 +1,4 @@
-from icap import ICAPRequest, ICAPResponse, RequestLine, HeadersDict, HTTPRequest, HTTPResponse
+from icap import ICAPRequest, ICAPResponse, RequestLine, HeadersDict, HTTPRequest, HTTPResponse, StatusLine
 from icap.errors import ICAPAbort
 from icap.models import ICAPMessage, HTTPMessage
 
@@ -96,3 +96,11 @@ class TestICAPResponse(object):
         s = ICAPResponse.from_error(ICAPAbort(204))
         s.headers = headers
         assert bytes(s) == b'ICAP/1.0 204 No Modifications Needed\r\nheader: value\r\n'
+
+
+def test_StatusLine_defaults():
+    s = StatusLine('HTTP/1.1', 200)
+    assert s.reason == 'OK'
+
+    s = StatusLine('ICAP/1.1', 204)
+    assert s.reason == 'No Modifications Needed'
