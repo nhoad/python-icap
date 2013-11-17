@@ -153,4 +153,3 @@ class Serializer(object):
 
         # TODO: remove all hop-by-hop headers
         # TODO: ensure required authorization headers are preserved
-

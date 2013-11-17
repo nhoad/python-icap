@@ -10,6 +10,14 @@ from .errors import abort
 _HANDLERS = defaultdict(list)
 
 
+__all__ = [
+    'handler',
+    'BaseCriteria',
+    'RegexCriteria',
+    'DomainCriteria',
+]
+
+
 @functools.total_ordering
 class BaseCriteria(object):
     """Base Criteria class, provides a foundation for implementation of custom
@@ -97,7 +105,27 @@ def get_handler(request, strict_when_missing_service=False):
     abort(204)
 
 
+def sort_handlers():
+    for key, items in _HANDLERS.items():
+        _HANDLERS[key] = sorted(items, key=lambda f: f[0].priority, reverse=True)
+
+
 def handler(criteria=None, name='', raw=False):
+    """Decorator to be used on functions/methods/classes intended to be used
+    for handling request or response modifications.
+
+    Keyword arguments:
+        ``criteria`` - the criteria to be used for determining if the wrapped
+                       callable should be used. If None, then will always be
+                       used.
+        ``name`` - subpath to use for matching, e.g. a name of 'foo' will
+                   translate to a uri of ``/foo/reqmod`` or ``/foo/respmod``.
+        ``raw`` - If True, the callable will receive an instance of
+                  `~icap.models.ICAPRequest` instead of an instance of
+                  `~icap.models.HTTPRequest` or `~icap.models.HTTPResponse`.
+
+    """
+
     criteria = criteria or AlwaysCriteria()
 
     def inner(handler):
@@ -121,5 +149,3 @@ def handler(criteria=None, name='', raw=False):
         return handler
 
     return inner
-
-

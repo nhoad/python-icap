@@ -86,6 +86,10 @@ def run(host='127.0.0.1', port=1334, *, factory_class=None, **kwargs):
     if factory_class is None:
         from .asyncio import ICAPProtocolFactory
         factory_class = ICAPProtocolFactory
+
+    from .criteria import sort_handlers
+    sort_handlers()
+
     factory = factory_class(**kwargs)
 
     loop = asyncio.get_event_loop()
