@@ -1,7 +1,4 @@
 import re
-import functools
-
-from asyncio.tasks import iscoroutine, Task
 from collections import OrderedDict
 
 from werkzeug import parse_dict_header
@@ -129,21 +126,3 @@ def dump_encapsulated_field(field):
             return ', '.join('%s=%d' % it for it in field.items())
     else:
         raise InvalidEncapsulatedHeadersError(field)
-
-
-def maybe_coroutine(value):
-    if iscoroutine(value):
-        return value
-
-    def coro():
-        yield
-        return value
-    return coro()
-
-
-def task(func):
-    @functools.wraps(task)
-    def caller(*args, **kwargs):
-        f = func(*args, **kwargs)
-        return Task(f)
-    return caller

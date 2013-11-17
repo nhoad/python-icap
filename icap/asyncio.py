@@ -1,93 +1,22 @@
 import asyncio
+import functools
+import logging
 import re
 import time
+import uuid
 
-from .criteria import AlwaysCriteria
+from asyncio.tasks import iscoroutine
+from io import BytesIO
+
+from .criteria import AlwaysCriteria, get_handler
 from .errors import abort, ICAPAbort, MalformedRequestError
 from .models import ICAPResponse, HTTPMessage
 from .parsing import ICAPRequestParser
 from .serialization import Serializer
 from .server import Hooks
-from .utils import maybe_coroutine, task
 
-from io import BytesIO
-
-import uuid
-
-from collections import defaultdict
-
-import logging
 
 log = logging.getLogger(__name__)
-
-
-_server = None
-_HANDLERS = defaultdict(list)
-
-
-def run(host='127.0.0.1', port=1334, **kwargs):
-    global _server
-
-    factory = ICAPProtocolFactory(**kwargs)
-    loop = asyncio.get_event_loop()
-    f = loop.create_server(factory, host, port)
-    _server = loop.run_until_complete(f)
-
-    loop.run_forever()
-
-
-def stop():
-    assert _server is not None
-    _server.close()
-
-
-def get_handler(request, strict_when_missing_service=False):
-    uri = request.request_line.uri
-    path = uri.path
-    services = _HANDLERS.get(path)
-
-    if not services:
-        # RFC3507 says we should abort with 404 if there are no handlers at
-        # a given resource - this is fine except when the client (Squid, in
-        # this case) relays ICAP 404 responses to the client as internal
-        # errors.
-        abort(404 if strict_when_missing_service or request.is_options else 204)
-
-    for criteria, handler, raw in services:
-        if criteria(request):
-            return handler, raw
-
-    if request.is_options:
-        handler = lambda req: None
-        return handler, False
-
-    abort(204)
-
-
-def handler(criteria=None, name='', raw=False):
-    criteria = criteria or AlwaysCriteria()
-
-    def inner(handler):
-        if isinstance(handler, type):
-            handler = handler()
-            reqmod = getattr(handler, 'reqmod', None)
-            respmod = getattr(handler, 'respmod', None)
-        else:
-            reqmod = handler if handler.__name__ == 'reqmod' else None
-            respmod = handler if handler.__name__ == 'respmod' else None
-
-        if reqmod:
-            key = '/'.join([name, 'reqmod'])
-            key = key if key.startswith('/') else '/%s' % key
-            _HANDLERS[key].append((criteria, reqmod, raw))
-
-        if respmod:
-            key = '/'.join([name, 'respmod'])
-            key = key if key.startswith('/') else '/%s' % key
-            _HANDLERS[key].append((criteria, respmod, raw))
-        return handler
-
-    return inner
 
 
 class ICAPProtocol(asyncio.Protocol):
@@ -250,11 +179,11 @@ class ICAPProtocolFactory(object):
     def handle_mod(self, request, handler, raw):
         # FIXME: Session support.
         if raw:
-            f = handler(request)
+            coro = maybe_coroutine(handler, request)
         else:
-            f = handler(request.http)
+            coro = maybe_coroutine(handler, request.http)
 
-        response = yield from maybe_coroutine(f)
+        response = yield from coro
         if response is None:
             response = request.http
         elif isinstance(response, HTTPMessage):
@@ -300,3 +229,22 @@ class ICAPProtocolFactory(object):
             response.headers.update(extra_headers)
 
         return response
+
+
+def maybe_coroutine(callable, *args, **kwargs):
+    """Invoke a function that may or may not be a coroutine.
+
+    This is analogous to `~twisted.internet.defer.maybeDeferred`, but for
+    `asyncio`.
+
+    """
+
+    value = callable(*args, **kwargs)
+
+    if iscoroutine(value):
+        return value
+
+    def coro():
+        yield
+        return value
+    return coro()

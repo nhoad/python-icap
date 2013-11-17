@@ -1,21 +1,3 @@
-import logging
-import re
-import signal
-import socket
-import time
-import uuid
-
-from collections import defaultdict
-
-from .criteria import AlwaysCriteria
-from .models import ICAPResponse, Session, HTTPMessage, StatusLine
-from .serialization import Serializer
-from .errors import abort, ICAPAbort, MalformedRequestError
-from .parsing import ICAPRequestParser
-
-log = logging.getLogger(__name__)
-
-
 class Hooks(dict):
     """Dispatch class for providing hooks at certain parts of the ICAP
     transaction.
@@ -79,3 +61,42 @@ class Hooks(dict):
         def wrapped(func):
             self[name] = func, default
         return wrapped
+
+
+_server = None
+
+
+def run(host='127.0.0.1', port=1334, *, factory_class=None, **kwargs):
+    """Run the ICAP server.
+
+    Keyword arguments:
+        host - the interface to use. Defaults to listening locally only.
+        port - the port to listen on.
+        factory_class - the callable to use for creating new protocols. Defauls
+                        to `~icap.asyncio.ICAPProtocolFactory`.
+
+        Any other keyword arguments will be passed to ``factory_class`` before
+        starting the server. See `~icap.asyncio.ICAPProtocolFactory` for
+        accepted values.
+
+    """
+    global _server
+
+    if factory_class is None:
+        from .asyncio import ICAPProtocolFactory
+        factory_class = ICAPProtocolFactory
+    factory = factory_class(**kwargs)
+
+    loop = asyncio.get_event_loop()
+    f = loop.create_server(factory, host, port)
+    _server = loop.run_until_complete(f)
+
+    loop.run_forever()
+
+
+def stop():
+    """Stop the server. Assumes it is already running."""
+    global server
+    assert _server is not None
+    _server.close()
+    _serevr = None

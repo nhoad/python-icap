@@ -3,6 +3,12 @@ import functools
 import re
 import urllib.parse
 
+from collections import defaultdict
+
+from .errors import abort
+
+_HANDLERS = defaultdict(list)
+
 
 @functools.total_ordering
 class BaseCriteria(object):
@@ -66,3 +72,54 @@ class AlwaysCriteria(BaseCriteria):
 
     def __call__(self, request):
         return True
+
+
+def get_handler(request, strict_when_missing_service=False):
+    uri = request.request_line.uri
+    path = uri.path
+    services = _HANDLERS.get(path)
+
+    if not services:
+        # RFC3507 says we should abort with 404 if there are no handlers at
+        # a given resource - this is fine except when the client (Squid, in
+        # this case) relays ICAP 404 responses to the client as internal
+        # errors.
+        abort(404 if strict_when_missing_service or request.is_options else 204)
+
+    for criteria, handler, raw in services:
+        if criteria(request):
+            return handler, raw
+
+    if request.is_options:
+        handler = lambda req: None
+        return handler, False
+
+    abort(204)
+
+
+def handler(criteria=None, name='', raw=False):
+    criteria = criteria or AlwaysCriteria()
+
+    def inner(handler):
+        if isinstance(handler, type):
+            handler = handler()
+            reqmod = getattr(handler, 'reqmod', None)
+            respmod = getattr(handler, 'respmod', None)
+        else:
+            reqmod = handler if handler.__name__ == 'reqmod' else None
+            respmod = handler if handler.__name__ == 'respmod' else None
+
+        if reqmod:
+            key = '/'.join([name, 'reqmod'])
+            key = key if key.startswith('/') else '/%s' % key
+            _HANDLERS[key].append((criteria, reqmod, raw))
+
+        if respmod:
+            key = '/'.join([name, 'respmod'])
+            key = key if key.startswith('/') else '/%s' % key
+            _HANDLERS[key].append((criteria, respmod, raw))
+        return handler
+
+    return inner
+
+

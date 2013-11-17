@@ -5,13 +5,11 @@ import pytest
 
 from mock import MagicMock, patch
 
-from icap import DomainCriteria, HTTPResponse, HeadersDict, HTTPRequest, handler
-from icap.asyncio import _HANDLERS, get_handler
-
-
-from icap.models import RequestLine, ICAPRequest
-from icap.asyncio import ICAPProtocolFactory, ICAPProtocol
+from icap import (DomainCriteria, HTTPResponse, HeadersDict, HTTPRequest,
+                  handler, ICAPProtocolFactory, ICAPProtocol, RequestLine)
+from icap.criteria import _HANDLERS, get_handler
 from icap.errors import ICAPAbort
+from icap.models import ICAPRequest
 from io import BytesIO
 
 
@@ -459,6 +457,20 @@ class TestICAPProtocolFactory(object):
         @handler(DomainCriteria('www.origin-server.com'), raw=True)
         def respmod(request):
             assert isinstance(request, ICAPRequest)
+            return b"fooooooooooooooo"
+
+        transaction = self.run_test(server, input_bytes, assert_mutated=True)
+
+        assert b"fooooooooooooooo" in transaction
+
+    def test_handle_request__coroutines(self):
+        input_bytes = data_string('icap_request_with_two_header_sets.request')
+
+        server = ICAPProtocolFactory()
+
+        @handler(DomainCriteria('www.origin-server.com'))
+        def respmod(request):
+            yield from asyncio.sleep(0.5)
             return b"fooooooooooooooo"
 
         transaction = self.run_test(server, input_bytes, assert_mutated=True)
