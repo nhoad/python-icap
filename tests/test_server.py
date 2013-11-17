@@ -6,7 +6,7 @@ import pytest
 from mock import MagicMock, patch
 
 from icap import (DomainCriteria, HTTPResponse, HeadersDict, HTTPRequest,
-                  handler, ICAPProtocolFactory, ICAPProtocol, RequestLine)
+                  handler, ICAPProtocolFactory, ICAPProtocol, RequestLine, hooks)
 from icap.criteria import _HANDLERS, get_handler
 from icap.errors import ICAPAbort
 from icap.models import ICAPRequest
@@ -43,6 +43,7 @@ class BytesIOTransport:
 class TestICAPProtocolFactory(object):
     def setup_method(self, method):
         _HANDLERS.clear()
+        hooks.clear()
 
     def test_validate_request_aborts_400_for_non_icap(self):
         request_line = RequestLine("REQMOD", "/", "HTTP/1.1")
@@ -72,7 +73,7 @@ class TestICAPProtocolFactory(object):
     ])
     def test_is_tag__valid_values(self, is_tag):
         s = ICAPProtocolFactory()
-        s.hooks('is_tag')(lambda request: 'a string')
+        hooks('is_tag')(lambda request: 'a string')
         assert s.is_tag(None) == '"a string"'
 
     @pytest.mark.parametrize(('is_tag', 'endswith'), [
@@ -82,7 +83,7 @@ class TestICAPProtocolFactory(object):
     ])
     def test_is_tag__maximum_length(self, is_tag, endswith):
         s = ICAPProtocolFactory()
-        s.hooks('is_tag')(lambda request: is_tag)
+        hooks('is_tag')(lambda request: is_tag)
         is_tag = s.is_tag(None)
         assert is_tag.endswith(endswith+'"')
         assert len(is_tag) <= 34
@@ -91,7 +92,7 @@ class TestICAPProtocolFactory(object):
         with patch.object(uuid.UUID, 'hex', 'cool hash'):
             server = ICAPProtocolFactory()
 
-        @server.hooks('is_tag')
+        @hooks('is_tag')
         def is_tag(request):
             raise Exception('boom')
 
@@ -289,7 +290,7 @@ class TestICAPProtocolFactory(object):
 
         server = self.dummy_server()
 
-        @server.hooks('options_headers')
+        @hooks('options_headers')
         def options_headers():
             raise Exception('noooo')
 
@@ -302,7 +303,7 @@ class TestICAPProtocolFactory(object):
         input_bytes = data_string('options_request.request')
         server = self.dummy_server()
 
-        @server.hooks('options_headers')
+        @hooks('options_headers')
         def options_headers():
             return {
                 'Transfer-Complete': '*',

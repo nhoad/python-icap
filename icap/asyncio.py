@@ -13,7 +13,7 @@ from .errors import abort, ICAPAbort, MalformedRequestError
 from .models import ICAPResponse, HTTPMessage
 from .parsing import ICAPRequestParser
 from .serialization import Serializer
-from .server import Hooks
+from .server import hooks
 
 
 log = logging.getLogger(__name__)
@@ -91,9 +91,11 @@ class ICAPProtocol(asyncio.Protocol):
             self.factory.validate_request(request)
             handler, raw = get_handler(request, self.factory.strict_when_missing_service)
 
+            hooks['before_handling'](request)
+
             response = yield from self.factory.handle_request(request, handler, raw)
 
-            self.factory.hooks['before_serialization'](request, response)
+            hooks['before_serialization'](request, response)
         except ICAPAbort as e:
             if e.status_code == 204 and not allow_204:
                 response = ICAPResponse(http=request.http)
@@ -132,12 +134,11 @@ class ICAPProtocolFactory(object):
         the ICAP server than it should.
 
         """
-        self.hooks = Hooks()
         self.strict_when_missing_service = strict_when_missing_service
 
         fallback_is_tag = uuid.uuid4().hex
 
-        @self.hooks('is_tag', default=fallback_is_tag)
+        @hooks('is_tag', default=fallback_is_tag)
         def is_tag(request):
             return fallback_is_tag
 
@@ -145,7 +146,7 @@ class ICAPProtocolFactory(object):
         return ICAPProtocol(factory=self)
 
     def is_tag(self, request):
-        return '"%s"' % self.hooks['is_tag'](request)[:32]
+        return '"%s"' % hooks['is_tag'](request)[:32]
 
     def validate_request(self, request):
         valid_request = (request.is_request and
@@ -223,7 +224,7 @@ class ICAPProtocolFactory(object):
         response.headers['Methods'] = 'RESPMOD' if path.endswith('respmod') else 'REQMOD'
         response.headers['Allow'] = '204'
 
-        extra_headers = self.hooks['options_headers']()
+        extra_headers = hooks['options_headers']()
 
         if extra_headers:
             response.headers.update(extra_headers)
