@@ -94,7 +94,7 @@ def start_client(pid):
 
         print('%d requests took %f seconds (average=%f, fastest=%f, slowest=%f)'
               % (total, running_time, running_time/total, fastest, slowest))
-        assert running_time < 1.01
+        assert running_time < 1.1
     finally:
         os.kill(pid, SIGINT)
 
