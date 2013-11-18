@@ -22,13 +22,16 @@ class ICAPProtocol(asyncio.Protocol):
         self.parser = ICAPRequestParser()
         self.factory = factory
         self._buffer = BytesIO()
+        self.connected = False
 
     def connection_made(self, transport):
         self.transport = transport
+        self.connected = True
+
+    def connection_lost(self, exc):
+        self.connected = False
 
     def data_received(self, data):
-        self.transport.pause_reading()
-
         self._buffer.write(data)
         self._buffer.seek(0)
 
@@ -43,8 +46,6 @@ class ICAPProtocol(asyncio.Protocol):
 
         if p.headers_complete() and p.is_options and 'encapsulated' not in p.headers:
             p.complete(True)
-
-        self.transport.resume_reading()
 
         if p.complete():
             return asyncio.async(self.handle_request())
@@ -76,6 +77,12 @@ class ICAPProtocol(asyncio.Protocol):
 
     @asyncio.coroutine
     def handle_request(self):
+        """Handle a single request. Validate it, get a handler for it, and
+        dispatch it to `~icap.asyncio.ICAPProtocol.handle_options~ or
+        `~icap.asyncio.handle_mod`.
+
+        This is also the principal exception handler.
+        """
         parser, self.parser, self._buffer = self.parser, ICAPRequestParser(), BytesIO()
 
         request = parser.to_icap()
@@ -110,6 +117,10 @@ class ICAPProtocol(asyncio.Protocol):
 
     def write_response(self, response, is_tag, is_options=False,
                        should_close=False):
+        """Serialise the given response object to the transport."""
+
+        if not self.connected:
+            return
 
         s = Serializer(response, is_tag, is_options=is_options)
         s.serialize_to_stream(self.transport)
