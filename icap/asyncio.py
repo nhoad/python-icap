@@ -2,8 +2,6 @@ import asyncio
 import functools
 import logging
 import re
-import time
-import uuid
 
 from asyncio.tasks import iscoroutine
 from io import BytesIO
@@ -13,7 +11,7 @@ from .errors import abort, ICAPAbort, MalformedRequestError
 from .models import ICAPResponse, HTTPMessage
 from .parsing import ICAPRequestParser
 from .serialization import Serializer
-from .server import hooks
+from .server import hooks, is_tag
 
 
 log = logging.getLogger(__name__)
@@ -27,10 +25,8 @@ class ICAPProtocol(asyncio.Protocol):
 
     def connection_made(self, transport):
         self.transport = transport
-        self.s = time.time()
 
     def data_received(self, data):
-        start = time.time()
         self.transport.pause_reading()
 
         self._buffer.write(data)
@@ -75,7 +71,7 @@ class ICAPProtocol(asyncio.Protocol):
 
     def respond_with_error(self, error, should_close=False):
         response = ICAPResponse.from_error(error)
-        self.write_response(response, self.factory.is_tag(None),
+        self.write_response(response, is_tag(None),
                             should_close=should_close)
 
     @asyncio.coroutine
@@ -88,12 +84,12 @@ class ICAPProtocol(asyncio.Protocol):
         allow_204 = request.allow_204
 
         try:
-            self.factory.validate_request(request)
+            self.validate_request(request)
             handler, raw = get_handler(request)
 
             hooks['before_handling'](request)
 
-            response = yield from self.factory.handle_request(request, handler, raw)
+            response = yield from self.dispatch_request(request, handler, raw)
 
             hooks['before_serialization'](request, response)
         except ICAPAbort as e:
@@ -108,7 +104,7 @@ class ICAPProtocol(asyncio.Protocol):
                       request.request_line.method, exc_info=True)
             response = ICAPResponse.from_error(500)
 
-        self.write_response(response, self.factory.is_tag(request),
+        self.write_response(response, is_tag(request),
                             is_options=request.is_options,
                             should_close=should_close)
 
@@ -121,22 +117,11 @@ class ICAPProtocol(asyncio.Protocol):
         if should_close:
             self.transport.close()
 
-
-class ICAPProtocolFactory(object):
-    def __init__(self):
-        fallback_is_tag = uuid.uuid4().hex
-
-        @hooks('is_tag', default=fallback_is_tag)
-        def is_tag(request):
-            return fallback_is_tag
-
-    def __call__(self):
-        return ICAPProtocol(factory=self)
-
-    def is_tag(self, request):
-        return '"%s"' % hooks['is_tag'](request)[:32]
-
     def validate_request(self, request):
+        """Validate that the given request is a valid ICAP 1.0 request that is
+        handled at the given URL.
+
+        """
         valid_request = (request.is_request and
                          request.request_line.version.startswith('ICAP/'))
         if not valid_request:
@@ -157,7 +142,14 @@ class ICAPProtocolFactory(object):
             abort(405)
 
     @asyncio.coroutine
-    def handle_request(self, request, handler, raw):
+    def dispatch_request(self, request, handler, raw):
+        """Handle a single ICAP request.
+
+        This is just a dispatcher for handle_options and handle_mod.
+
+        Returns an `~icap.models.ICAPResponse` suitable for serialization.
+
+        """
         if request.is_options:
             response = yield from self.handle_options(request)
         else:
@@ -166,6 +158,11 @@ class ICAPProtocolFactory(object):
 
     @asyncio.coroutine
     def handle_mod(self, request, handler, raw):
+        """Handle a single REQMOD or RESPMOD request.
+
+        Returns an `~icap.models.ICAPResponse` suitable for serialization.
+
+        """
         # FIXME: Session support.
         if raw:
             coro = maybe_coroutine(handler, request)
@@ -182,6 +179,7 @@ class ICAPProtocolFactory(object):
             request.http.body = response
             response = request.http
 
+        assert isinstance(response, HTTPMessage)
         http = response
         response = ICAPResponse(http=http)
 
@@ -197,9 +195,6 @@ class ICAPProtocolFactory(object):
     def handle_options(self, request):
         """Handle an OPTIONS request, returning the ICAPResponse object to
         serialize.
-
-        If a request is received for a resource that is not handled, returns
-        an ICAP 404.
 
         Will call the 'options_headers' hook, which is expected to return a
         ``dict`` of headers to append to the ICAP response headers.
@@ -218,6 +213,14 @@ class ICAPProtocolFactory(object):
             response.headers.update(extra_headers)
 
         return response
+
+
+class ICAPProtocolFactory(object):
+    """Factory class for creating ICAPProtocol objects."""
+    protocol = ICAPProtocol
+
+    def __call__(self):
+        return self.protocol(factory=self)
 
 
 def maybe_coroutine(callable, *args, **kwargs):

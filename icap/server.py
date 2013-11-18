@@ -1,4 +1,7 @@
 import asyncio
+import uuid
+
+from .criteria import sort_handlers
 
 __all__ = [
     'hooks',
@@ -60,7 +63,7 @@ class Hooks(dict):
         def safe_callable(*args, **kwargs):
             try:
                 return func(*args, **kwargs)
-            except Exception:
+            except Exception as e:
                 return default
         return safe_callable
 
@@ -79,12 +82,32 @@ class Hooks(dict):
 
         def wrapped(func):
             self[name] = func, default
+            return func
         return wrapped
 
 
 hooks = Hooks()
 
 _server = None
+_fallback_is_tag = uuid.uuid4().hex
+
+
+@hooks('is_tag', default=_fallback_is_tag)
+def is_tag_hook(request):
+    """Fallback hook for ISTag, a required ICAP header. This header may be used
+    by ICAP clients for determining a cache "cookie" of a response.
+
+    """
+    return _fallback_is_tag
+
+
+def is_tag(request):
+    """Return the quoted ISTag header value to be used for the response of
+    a given request, truncated to 32 bytes.
+
+    You don't need to use this directly.
+    """
+    return '"%s"' % hooks['is_tag'](request)[:32]
 
 
 def run(host='127.0.0.1', port=1334, *, factory_class=None, **kwargs):
@@ -107,7 +130,6 @@ def run(host='127.0.0.1', port=1334, *, factory_class=None, **kwargs):
         from .asyncio import ICAPProtocolFactory
         factory_class = ICAPProtocolFactory
 
-    from .criteria import sort_handlers
     sort_handlers()
 
     factory = factory_class(**kwargs)

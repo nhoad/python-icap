@@ -7,6 +7,7 @@ from mock import MagicMock, patch
 
 from icap import (DomainCriteria, HTTPResponse, HeadersDict, HTTPRequest,
                   handler, ICAPProtocolFactory, ICAPProtocol, RequestLine, hooks)
+from icap.server import is_tag, _fallback_is_tag
 from icap.criteria import _HANDLERS, get_handler
 from icap.errors import ICAPAbort
 from icap.models import ICAPRequest
@@ -40,138 +41,61 @@ class BytesIOTransport:
         pass
 
 
-class TestICAPProtocolFactory(object):
-    def setup_method(self, method):
-        _HANDLERS.clear()
-        hooks.clear()
-
+class TestICAPProtocol:
     def test_validate_request_aborts_400_for_non_icap(self):
         request_line = RequestLine("REQMOD", "/", "HTTP/1.1")
         request = ICAPRequest(request_line)
 
         try:
-            ICAPProtocolFactory().validate_request(request)
+            ICAPProtocol(None).validate_request(request)
         except ICAPAbort as e:
             assert e.status_code == 400
+        else:
+            assert False
 
         m = MagicMock(is_request=False)
 
         try:
-            ICAPProtocolFactory().validate_request(m)
+            ICAPProtocol(None).validate_request(m)
         except ICAPAbort as e:
             assert e.status_code == 400
+        else:
+            assert False
+
+
+class TestISTag:
+    def test_is_tag__valid_values(self):
+        hooks('is_tag')(lambda request: 'a string')
+        assert is_tag(None) == '"a string"'
+
+    @pytest.mark.parametrize(('expected_is_tag', 'endswith'), [
+        ('1'*31+'2', '2'),
+        ('1'*30+'23', '3'),
+        ('lamp', 'lamp'),
+    ])
+    def test_is_tag__maximum_length(self, expected_is_tag, endswith):
+        hooks('is_tag')(lambda request: expected_is_tag)
+        tag = is_tag(None)
+        assert tag.endswith(endswith+'"')
+        assert len(tag) <= 34
+
+    def test_is_tag__error(self):
+        @hooks('is_tag')
+        def is_tag_bad(request):
+            raise Exception('boom')
+
+        assert is_tag(None) == '"%s"' % _fallback_is_tag
+
+
+class TestICAPProtocol:
+    def setup_method(self, method):
+        _HANDLERS.clear()
 
     def test_as_factory(self):
         f = ICAPProtocolFactory()
         t = f()
         assert isinstance(t, ICAPProtocol)
         assert t.factory == f
-
-    @pytest.mark.parametrize('is_tag', [
-        'a string',
-        lambda request: 'a string',
-    ])
-    def test_is_tag__valid_values(self, is_tag):
-        s = ICAPProtocolFactory()
-        hooks('is_tag')(lambda request: 'a string')
-        assert s.is_tag(None) == '"a string"'
-
-    @pytest.mark.parametrize(('is_tag', 'endswith'), [
-        ('1'*31+'2', '2'),
-        ('1'*30+'23', '3'),
-        ('lamp', 'lamp'),
-    ])
-    def test_is_tag__maximum_length(self, is_tag, endswith):
-        s = ICAPProtocolFactory()
-        hooks('is_tag')(lambda request: is_tag)
-        is_tag = s.is_tag(None)
-        assert is_tag.endswith(endswith+'"')
-        assert len(is_tag) <= 34
-
-    def test_is_tag__error(self):
-        with patch.object(uuid.UUID, 'hex', 'cool hash'):
-            server = ICAPProtocolFactory()
-
-        @hooks('is_tag')
-        def is_tag(request):
-            raise Exception('boom')
-
-        assert server.is_tag(None) == '"cool hash"'
-
-    def test_handle_mapping(self):
-        @handler(lambda *args: True, name='lamps')
-        def reqmod(message):
-            pass  # pragma: no cover
-
-        @handler(lambda *args: True, name='blarg')
-        def respmod(message):
-            pass  # pragma: no cover
-
-        print(list(_HANDLERS.keys()))
-
-        mock_request = MagicMock(is_reqmod=True, is_options=False)
-        mock_request.request_line.uri.path = '/lamps/reqmod'
-        assert get_handler(mock_request)[0] == reqmod
-
-        mock_request = MagicMock(is_reqmod=False, is_options=False)
-        mock_request.request_line.uri.path = '/blarg/respmod'
-        assert get_handler(mock_request)[0] == respmod
-
-    def test_handle_reqmod(self):
-        @handler(lambda *args: True)
-        def reqmod(self, *args):
-            pass  # pragma: no cover
-
-        request = MagicMock(http='http', is_options=False)
-        request.request_line.uri.path = '/reqmod'
-
-        assert get_handler(request)[0] == reqmod
-
-    def test_handle_respmod(self):
-        @handler(lambda *args: True)
-        def respmod(self, *args):
-            pass  # pragma: no cover
-
-        request = MagicMock(is_reqmod=False, http='http', is_options=False)
-        request.request_line.uri.path = '/respmod'
-
-        assert get_handler(request)[0] == respmod
-
-    def test_handle_both(self):
-        @handler(lambda *args: True)
-        def respmod(self, *args):
-            pass  # pragma: no cover
-
-        @handler(lambda *args: True)
-        def reqmod(self, *args):
-            pass  # pragma: no cover
-
-        request = MagicMock(is_reqmod=False, http='http', is_options=False)
-        request.request_line.uri.path = '/respmod'
-        assert get_handler(request)[0] == respmod
-
-        request = MagicMock(http='http', is_options=False)
-        request.request_line.uri.path = '/reqmod'
-        assert get_handler(request)[0] == reqmod
-
-    def test_handle_class(self):
-        @handler(lambda *args: True)
-        class Foo(object):
-            def reqmod(self, message):
-                pass  # pragma: no cover
-
-            def respmod(self, message):
-                pass  # pragma: no cover
-
-        print(_HANDLERS)
-
-        reqmod = MagicMock(http='http', is_options=False)
-        respmod = MagicMock(is_reqmod=False, http='http', is_options=False)
-        reqmod.request_line.uri.path = '/reqmod'
-        respmod.request_line.uri.path = '/respmod'
-
-        assert get_handler(reqmod)[0] == _HANDLERS['/reqmod'][0][1]
-        assert get_handler(respmod)[0] == _HANDLERS['/respmod'][0][1]
 
     @pytest.mark.parametrize(('input_bytes', 'expected_message'), [
         (b'OPTIONS / HTTP/1.0\r\n\r\n', b'400 Bad Request'),  # HTTP is a no-no
