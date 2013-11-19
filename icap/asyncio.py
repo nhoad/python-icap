@@ -71,6 +71,11 @@ class ICAPProtocol(asyncio.Protocol):
         self.parser.feed_body(data)
 
     def respond_with_error(self, error, should_close=False):
+        """Write an error to the transport as a response to the request.
+
+        ``error`` - either the ICAP error code or an instance of
+                    `~icap.errors.ICAPAbort`.
+        """
         response = ICAPResponse.from_error(error)
         self.write_response(response, is_tag(None),
                             should_close=should_close)

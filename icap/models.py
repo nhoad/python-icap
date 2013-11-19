@@ -1,3 +1,10 @@
+"""
+Various high-level classes representing HTTP and ICAP messages and parts
+comprising them.
+
+"""
+
+
 from urllib.parse import urlencode
 from urllib.parse import parse_qs, urlparse
 
@@ -421,39 +428,3 @@ class HTTPResponse(HTTPMessage):
         assert not isinstance(parser, ICAPRequestParser)
         assert parser.is_response
         return cls(parser.sline, parser.headers, parser.chunks)
-
-
-class Session(dict):
-    """In memory storage between HTTP requests and responses."""
-    sessions = {}
-
-    @classmethod
-    def from_request(cls, request):
-        if 'X-Session-Id' in request.headers:
-            session_id = request.headers['X-Session-Id']
-        else:
-            # FIXME: This needs a LOT of work.
-            # It should probably be a hash of request line, Host and Cookies
-            # headers.
-            if request.is_reqmod:
-                session_id = hash(str(request.http.headers))
-            else:
-                session_id = hash(str(request.http.request_headers))
-
-        if session_id in cls.sessions:
-            return cls.sessions[session_id]
-
-        session = cls.sessions[session_id] = Session(session_id=session_id)
-        session.populate(request)
-        return session
-
-    def finished(self):
-        self.sessions.pop(self['session_id'], None)
-
-    def populate(self, request):
-        if isinstance(request.http, HTTPResponse):
-            url = request.http.request_line.uri
-        else:
-            url = request.http.request_line.uri
-
-        self['url'] = url

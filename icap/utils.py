@@ -1,9 +1,20 @@
+"""
+Utility functions that don't fit anywhere else.
+"""
+
 import re
 from collections import OrderedDict
 
 from werkzeug import parse_dict_header
 
 from .errors import InvalidEncapsulatedHeadersError
+
+
+__all__ = [
+    'convert_offsets_to_sizes',
+    'parse_encapsulated_field',
+    'dump_encapsulated_field',
+]
 
 
 def convert_offsets_to_sizes(fields):

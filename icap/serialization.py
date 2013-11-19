@@ -46,6 +46,9 @@ options_response_headers = re.compile('(%s)' % '|'.join([
 
 
 def remove_invalid_headers(headers, is_options=False):
+    """Remove all unknown headers from the ICAP response that aren't prefixed
+    with X-.
+    """
     invalid = set()
     opt_match = options_response_headers.match
     match = response_headers.match
@@ -119,6 +122,7 @@ class Serializer(object):
     def set_encapsulated_header(self):
         """Serialize the http message preamble, set the encapsulated header,
         and return the serialized preamble.
+
         """
         if self.response.status_line.code != 200 or self.is_options:
             encapsulated = OrderedDict([('null-body', 0)])
@@ -147,6 +151,7 @@ class Serializer(object):
         """Sets headers required for the ICAP response.
 
         Currently these set ISTag and Date headers.
+
         """
         self.response.headers['Date'] = http_date()
         self.response.headers['ISTag'] = self.is_tag
