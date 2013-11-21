@@ -249,6 +249,10 @@ def test_HeadersDict():
         ('lamp', 'i dont love lamp'),
     ])
 
+    assert 'LAMP' in d
+    assert 'LaMp' in d
+    assert 'lamp' in d
+
     assert a == b
     assert a != c
     assert c != d

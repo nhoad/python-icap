@@ -134,6 +134,10 @@ class HeadersDict(OrderedDict):
         """Return the first value stored at ``key``."""
         return OrderedDict.__getitem__(self, key.lower())[0][1]
 
+    def __contains__(self, key):
+        """Check if header ``key`` is present. Case insensitive."""
+        return OrderedDict.__contains__(self, key.lower())
+
     def get(self, key, default=None):
         """Return the first value stored at ``key``. Return ``default`` if no
         value is present."""
