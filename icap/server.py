@@ -120,7 +120,7 @@ def run(host='127.0.0.1', port=1334, *, factory_class=None, **kwargs):
         ``host`` - the interface to use. Defaults to listening locally only.
         ``port`` - the port to listen on.
         ``factory_class`` - the callable to use for creating new protocols.
-                            Defauls to `~icap.asyncio.ICAPProtocolFactory`.
+                            Defaults to `~icap.asyncio.ICAPProtocolFactory`.
 
         Any other keyword arguments will be passed to ``factory_class`` before
         starting the server. See `~icap.asyncio.ICAPProtocolFactory` for
@@ -128,6 +128,7 @@ def run(host='127.0.0.1', port=1334, *, factory_class=None, **kwargs):
 
     """
     global _server
+    assert _server is None
 
     if factory_class is None:
         from .asyncio import ICAPProtocolFactory
@@ -147,6 +148,7 @@ def run(host='127.0.0.1', port=1334, *, factory_class=None, **kwargs):
 def stop():
     """Stop the server. Assumes it is already running."""
     global _server
-    assert _server is not None
+    if _server is None:
+        return
     _server.close()
     _server = None
