@@ -12,6 +12,7 @@ from .models import ICAPResponse, HTTPMessage
 from .parsing import ICAPRequestParser
 from .serialization import Serializer
 from .server import hooks, is_tag
+from .session import should_finalize_session, finalize_session, get_session
 
 
 log = logging.getLogger(__name__)
@@ -101,7 +102,14 @@ class ICAPProtocol(asyncio.Protocol):
 
             hooks['before_handling'](request)
 
-            response = yield from self.dispatch_request(request, handler, raw)
+            if not request.is_options:
+                request.session = yield from maybe_coroutine(get_session, request)
+
+            try:
+                response = yield from self.dispatch_request(request, handler, raw)
+            finally:
+                if should_finalize_session(request):
+                    yield from maybe_coroutine(finalize_session, request.session['id'])
 
             hooks['before_serialization'](request, response)
         except ICAPAbort as e:
