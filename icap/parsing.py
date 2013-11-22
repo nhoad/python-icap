@@ -50,18 +50,22 @@ class ChunkedMessageParser(object):
     def feed_line(self, line):
         if isinstance(line, bytes):
             line = line.decode('utf8')
+
+        # FIXME: non-crlf-endings
+        if not line.endswith('\r\n'):
+            return False
+
         if not self.started():
             self.handle_status_line(line)
         elif not self.headers_complete():
             self.handle_header(line)
 
+        return True
+
     def feed_body(self, data):
         self.body.write(data)
-        try:
-            while not self.complete():
-                self.attempt_body_parse()
-        except ChunkParsingError:
-            pass
+        while not self.complete():
+            self.attempt_body_parse()
 
     @classmethod
     def from_bytes(cls, bytes):
@@ -70,7 +74,8 @@ class ChunkedMessageParser(object):
 
         while not self.headers_complete():
             line = stream.readline()
-            self.feed_line(line)
+            if not self.feed_line(line):
+                raise MalformedRequestError()
 
         s = stream.read()
         if s:
@@ -94,10 +99,6 @@ class ChunkedMessageParser(object):
         if not header.replace('\r\n', ''):
             self.headers_complete(True)
             return
-
-        # FIXME: non-crlf-endings
-        if not header.endswith('\r\n'):
-            raise MalformedRequestError
 
         # multiline headers
         if header.startswith(('\t', ' ')):

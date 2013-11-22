@@ -51,14 +51,16 @@ class ICAPProtocol(asyncio.Protocol):
         if p.complete():
             return asyncio.async(self.handle_request())
 
-    def line_received(self, line):
-        self.parser.feed_line(line)
-
     def lines_received(self):
+        feed_line = self.parser.feed_line
+        headers_complete = self.parser.headers_complete
+
         try:
             for line in self._buffer:
-                self.line_received(line)
-                if self.parser.headers_complete():
+                if not feed_line(line):
+                    self._buffer = BytesIO(line+self._buffer.read())
+                    break
+                if headers_complete():
                     d = self._buffer.read()
                     return d
         except ICAPAbort as e:
@@ -150,11 +152,9 @@ class ICAPProtocol(asyncio.Protocol):
                          request.request_line.version.startswith('ICAP/'))
         if not valid_request:
             abort(400)
-            return
 
         if not request.request_line.version.endswith('/1.0'):
             abort(505)
-            return
 
         url = request.request_line.uri
         resource = url.path.lower()

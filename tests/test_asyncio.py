@@ -52,6 +52,21 @@ class TestICAPProtocol:
     def setup_method(self, method):
         _HANDLERS.clear()
 
+    def test_connection_made_and_lost(self):
+        i = ICAPProtocol(None)
+        transport = MagicMock()
+
+        assert not i.connected
+
+        i.connection_made(transport)
+
+        assert i.transport == transport
+        assert i.connected
+
+        i.connection_lost(None)
+
+        assert not i.connected
+
     def test_validate_request_aborts_400_for_non_icap(self):
         request_line = RequestLine("REQMOD", "/", "HTTP/1.1")
         request = ICAPRequest(request_line)
@@ -129,6 +144,22 @@ class TestICAPProtocol:
 
         print(s)
         assert b'405 Method Not Allowed For Service' in s
+
+    def test_multiple_data_received_calls(self):
+        input_bytes = data_string('icap_request_with_two_header_sets.request')
+
+        server = ICAPProtocolFactory()
+
+        protocol = server()
+        protocol.connection_made(BytesIOTransport())
+
+        for b in input_bytes:
+            f = protocol.data_received(bytes([b]))
+
+            if f is not None:
+                asyncio.get_event_loop().run_until_complete(f)
+
+        t = protocol.transport.getvalue()
 
     def run_test(self, server, input_bytes, force_204=False,
                  assert_mutated=False, multi_chunk=False):
