@@ -146,7 +146,7 @@ def run(host='127.0.0.1', port=1334, *, factory_class=None, **kwargs):
 
 def stop():
     """Stop the server. Assumes it is already running."""
-    global server
+    global _server
     assert _server is not None
     _server.close()
-    _serevr = None
+    _server = None

@@ -1,8 +1,10 @@
 
 import pytest
 
+from mock import MagicMock, patch
+
 from icap import hooks
-from icap.server import is_tag, _fallback_is_tag
+from icap.server import is_tag, _fallback_is_tag, stop
 
 
 class TestISTag:
@@ -27,3 +29,15 @@ class TestISTag:
             raise Exception('boom')
 
         assert is_tag(None) == '"%s"' % _fallback_is_tag
+
+
+def test_stop():
+    m = MagicMock()
+    with patch('icap.server._server', m):
+        stop()
+
+        import icap.server
+        assert icap.server._server is None
+
+    m.close.assert_any_call()
+
