@@ -131,3 +131,76 @@ def test_StatusLine_defaults():
 
     s = StatusLine('ICAP/1.1', 204)
     assert s.reason == 'No Modifications Needed'
+
+
+def test_HeadersDict():
+    h = HeadersDict()
+    h['Foo'] = 'bar'
+    h['Foo'] = 'baz'
+
+    assert h['foo'] == 'bar'
+    assert h['FOO'] == 'bar'
+    assert h.get('foo') == 'bar'
+    assert h.get('bar') is None
+    assert h.get('baz', 'asdf') == 'asdf'
+    assert h.getlist('foo') == ['bar', 'baz']
+    assert h.getlist('bar') == []
+
+    h.replace('Foo', 'bar')
+    assert h.getlist('Foo') == ['bar']
+
+    b = HeadersDict()
+
+    for i in range(6):
+        b['Foo'] = 'bar'
+
+    a = HeadersDict([
+        ('Foo', 'bar'),
+        ('Foo', 'bar'),
+        ('Foo', 'bar'),
+        ('Foo', 'bar'),
+        ('Foo', 'bar'),
+        ('Foo', 'bar'),
+    ])
+
+    c = HeadersDict([
+        ('lamp', 'i love lamp'),
+    ])
+
+    d = HeadersDict([
+        ('lamp', 'i dont love lamp'),
+    ])
+
+    assert 'LAMP' in d
+    assert 'LaMp' in d
+    assert 'lamp' in d
+
+    assert a == b
+    assert a != c
+    assert c != d
+
+    assert bytes(a) == '\r\n'.join(['Foo: bar']*6).encode('utf8') + b'\r\n'
+    assert bytes(c) == b'lamp: i love lamp\r\n'
+    assert bytes(d) == b'lamp: i dont love lamp\r\n'
+    assert bytes(HeadersDict()) == b''
+
+    e = HeadersDict()
+
+    e['foo'] = b'bar'
+    e[b'bar'] = 'baz'
+    try:
+        b[1] = 'bar'
+    except TypeError:
+        pass
+    else:
+        assert False, "non-str key should raise TypeError"
+    try:
+        b['baz'] = 1
+    except TypeError:
+        pass
+    else:
+        assert False, "non-str value should raise TypeError"
+
+    assert e['foo'] == 'bar'
+    assert e[b'bar'] == 'baz'
+    assert b'bar' in e

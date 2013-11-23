@@ -123,6 +123,8 @@ class HeadersDict(OrderedDict):
         The case of ``key`` is preserved internally for later use.
 
         """
+        key = self._checktype(key)
+        value = self._checktype(value)
         lkey = key.lower()
 
         if lkey not in self:
@@ -130,13 +132,21 @@ class HeadersDict(OrderedDict):
         else:
             OrderedDict.__getitem__(self, lkey).append((key, value))
 
+    def _checktype(self, value):
+        if isinstance(value, bytes):
+            return value.decode('utf8')
+        elif isinstance(value, str):
+            return value
+        else:
+            raise TypeError("Value must be of type 'str' or 'bytes', received '%s'" % type(value))
+
     def __getitem__(self, key):
         """Return the first value stored at ``key``."""
-        return OrderedDict.__getitem__(self, key.lower())[0][1]
+        return OrderedDict.__getitem__(self, self._checktype(key).lower())[0][1]
 
     def __contains__(self, key):
         """Check if header ``key`` is present. Case insensitive."""
-        return OrderedDict.__contains__(self, key.lower())
+        return OrderedDict.__contains__(self, self._checktype(key).lower())
 
     def get(self, key, default=None):
         """Return the first value stored at ``key``. Return ``default`` if no
