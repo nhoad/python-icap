@@ -64,8 +64,14 @@ class ChunkedMessageParser(object):
 
     def feed_body(self, data):
         self.body.write(data)
-        while not self.complete():
-            self.attempt_body_parse()
+        self.body.seek(0)
+        try:
+            while not self.complete():
+                self.attempt_body_parse()
+        except ChunkParsingError:
+            pass
+        finally:
+            self.body.seek(0, SEEK_END)
 
     @classmethod
     def from_bytes(cls, bytes):
@@ -141,18 +147,18 @@ class ICAPRequestParser(ChunkedMessageParser):
         self.response_parser = HTTPMessageParser()
 
     def attempt_body_parse(self):
-        self.body.seek(0)
         name, size = self.encapsulated_parts[0]
         data = self.body.read(size)
 
         if size > 0 and len(data) != size:
             raise ChunkParsingError
 
+        if size == -1 and not data:
+            raise ChunkParsingError
+
         if size == 0:
             assert name == 'null-body'
             assert not data
-
-        self.encapsulated_parts.pop(0)
 
         if name in ('req-hdr', 'req-body'):
             parser = self.request_parser
@@ -160,6 +166,7 @@ class ICAPRequestParser(ChunkedMessageParser):
             parser = self.response_parser
 
         if name in ('req-hdr', 'res-hdr'):
+            self.encapsulated_parts.pop(0)
             buffer = BytesIO(data)
             for line in buffer:
                 parser.feed_line(line)
@@ -167,6 +174,11 @@ class ICAPRequestParser(ChunkedMessageParser):
         elif name in ('req-body', 'res-body'):
             assert parser.headers_complete()
             parser.feed_body(data)
+
+            if parser.complete():
+                self.encapsulated_parts.pop(0)
+            else:
+                raise ChunkParsingError
         else:
             if self.is_reqmod:
                 parser = self.request_parser
@@ -232,26 +244,24 @@ class ICAPRequestParser(ChunkedMessageParser):
 
 class HTTPMessageParser(ChunkedMessageParser):
     def attempt_body_parse(self):
-        # FIXME: this need a lot of testing. This is going to break on
-        # messages with multiple chunks because we seek back to the beginning
-        # of all data at the end.
+        while True:
+            chunk = self.attempt_parse_chunk()
+            if chunk is None:
+                assert self.complete()
+                break
+            self.chunks.append(chunk)
 
+    def feed_body(self, data):
         self.body.seek(0)
-
-        try:
-            while True:
-                chunk = self.attempt_parse_chunk()
-                if chunk is None:
-                    break
-                self.chunks.append(chunk)
-        finally:
-            self.body.seek(0, SEEK_END)
+        self.body.truncate()
+        return super().feed_body(data)
 
     def attempt_parse_chunk(self):
         line = self.body.readline()
 
+        # FIXME: non-crlf-endings
         if not line.endswith(b'\r\n'):
-            return
+            raise ChunkParsingError
         else:
             try:
                 size, header = line.split(b';', 1)

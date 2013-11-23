@@ -146,12 +146,27 @@ class TestICAPProtocol:
         assert b'405 Method Not Allowed For Service' in s
 
     def test_multiple_data_received_calls(self):
+        expected = HeadersDict([
+            ('Host', 'icap.example.org'),
+            ('Encapsulated', 'req-hdr=0, res-hdr=137, res-body=296')
+        ])
+
         input_bytes = data_string('icap_request_with_two_header_sets.request')
 
         server = ICAPProtocolFactory()
 
         protocol = server()
         protocol.connection_made(BytesIOTransport())
+
+        called = False
+
+        @handler(raw=True)
+        def respmod(request):
+            nonlocal called
+            assert request.is_respmod
+            assert request.request_line is not None
+            assert request.headers == expected
+            called = True
 
         for b in input_bytes:
             f = protocol.data_received(bytes([b]))
@@ -160,6 +175,12 @@ class TestICAPProtocol:
                 asyncio.get_event_loop().run_until_complete(f)
 
         t = protocol.transport.getvalue()
+
+        assert protocol.parser.sline is None
+        assert not protocol.parser.headers
+        assert not protocol.parser.complete()
+        assert t
+        assert called
 
     def run_test(self, server, input_bytes, force_204=False,
                  assert_mutated=False, multi_chunk=False):

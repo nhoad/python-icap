@@ -4,7 +4,7 @@ import logging
 import re
 
 from asyncio.tasks import iscoroutine
-from io import BytesIO
+from io import BytesIO, SEEK_END
 
 from .criteria import AlwaysCriteria, get_handler
 from .errors import abort, ICAPAbort, MalformedRequestError
@@ -33,15 +33,12 @@ class ICAPProtocol(asyncio.Protocol):
         self.connected = False
 
     def data_received(self, data):
-        self._buffer.write(data)
-        self._buffer.seek(0)
-
         if self.parser.headers_complete():
-            self.raw_data_received(self._buffer.read())
+            self.raw_data_received(data)
         else:
-            d = self.lines_received()
-            if d:
-                self.raw_data_received(d)
+            self._buffer.write(data)
+            self._buffer.seek(0)
+            self.lines_received()
 
         p = self.parser
 
@@ -58,15 +55,22 @@ class ICAPProtocol(asyncio.Protocol):
         try:
             for line in self._buffer:
                 if not feed_line(line):
-                    self._buffer = BytesIO(line+self._buffer.read())
+                    self.reset_buffer(line)
                     break
                 if headers_complete():
-                    d = self._buffer.read()
-                    return d
+                    self.raw_data_received(self._buffer.read())
+                    self.reset_buffer()
+                    return
+            else:
+                self.reset_buffer()
         except ICAPAbort as e:
             self.respond_with_error(e, should_close=True)
         except (ICAPAbort, MalformedRequestError) as e:
             self.respond_with_error(400, should_close=True)
+
+    def reset_buffer(self, prefix=b''):
+        self._buffer = BytesIO(prefix+self._buffer.read())
+        self._buffer.seek(0, SEEK_END)
 
     def raw_data_received(self, data):
         assert self.parser.headers_complete()
