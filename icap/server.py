@@ -2,6 +2,7 @@
 Misc function and classes for running the ICAP server.
 """
 import asyncio
+import signal
 import uuid
 
 from .criteria import sort_handlers
@@ -113,18 +114,38 @@ def is_tag(request):
     return '"%s"' % hooks['is_tag'](request)[:32]
 
 
-def run(host='127.0.0.1', port=1334, *, factory_class=None, **kwargs):
+def signal_handlers():
+    """Install handlers for SIGTERM, SIGINT, and SIGBREAK to stop the server
+    gracefully.
+
+    To disable this behaviour, pass install_signal_handlers=False to
+    `~icap.server.run`.
+
+    """
+    loop = asyncio.get_event_loop()
+
+    loop.add_signal_handler(signal.SIGTERM, stop)
+    loop.add_signal_handler(signal.SIGINT, stop)
+
+    if hasattr(signal, "SIGBREAK"):
+        loop.add_signal_handler(signal.SIGBREAK, stop)
+
+
+def run(host='127.0.0.1', port=1334, *, install_signal_handlers=True,
+        factory_class=None, **kwargs):
     """Run the ICAP server.
 
     Keyword arguments:
         ``host`` - the interface to use. Defaults to listening locally only.
         ``port`` - the port to listen on.
         ``factory_class`` - the callable to use for creating new protocols.
-                            Defaults to `~icap.asyncio.ICAPProtocolFactory`.
+        Defaults to `~icap.asyncio.ICAPProtocolFactory`.
+        ``install_signal_handlers`` - install signal handlers for graceful
+        shutdown. See `~icap.server.signal_handlers`.
 
-        Any other keyword arguments will be passed to ``factory_class`` before
-        starting the server. See `~icap.asyncio.ICAPProtocolFactory` for
-        accepted values.
+    Any other keyword arguments will be passed to ``factory_class`` before
+    starting the server. See `~icap.asyncio.ICAPProtocolFactory` for
+    accepted values.
 
     """
     global _server
@@ -135,6 +156,9 @@ def run(host='127.0.0.1', port=1334, *, factory_class=None, **kwargs):
         factory_class = ICAPProtocolFactory
 
     sort_handlers()
+
+    if install_signal_handlers:
+        signal_handlers()
 
     factory = factory_class(**kwargs)
 

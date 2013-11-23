@@ -1,10 +1,10 @@
-
+import signal
 import pytest
 
 from mock import MagicMock, patch
 
 from icap import hooks
-from icap.server import is_tag, _fallback_is_tag, stop, run
+from icap.server import is_tag, _fallback_is_tag, stop, run, signal_handlers
 
 
 class TestISTag:
@@ -85,3 +85,29 @@ def test_run():
         assert icap.server._server == server
 
         stop()
+
+
+def test_signal_handlers_no_sigbreak():
+    with patch('asyncio.get_event_loop') as get_event_loop:
+        signal_handlers()
+
+        loop = get_event_loop.return_value
+
+    loop.add_signal_handler.assert_any_call(signal.SIGTERM, stop)
+    loop.add_signal_handler.assert_any_call(signal.SIGINT, stop)
+
+    assert len(loop.add_signal_handler.mock_calls) == 2
+
+
+def test_signal_handlers_sigbreak():
+    with patch('asyncio.get_event_loop') as get_event_loop:
+        with patch('signal.SIGBREAK', 'foo', create=True):
+            signal_handlers()
+
+        loop = get_event_loop.return_value
+
+    loop.add_signal_handler.assert_any_call(signal.SIGTERM, stop)
+    loop.add_signal_handler.assert_any_call(signal.SIGINT, stop)
+    loop.add_signal_handler.assert_any_call('foo', stop)
+
+    assert len(loop.add_signal_handler.mock_calls) == 3
