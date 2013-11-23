@@ -142,7 +142,7 @@ def run(host='127.0.0.1', port=1334, *, factory_class=None, **kwargs):
     f = loop.create_server(factory, host, port)
     _server = loop.run_until_complete(f)
 
-    loop.run_forever()
+    loop.run_until_complete(_server.wait_closed())
 
 
 def stop():
