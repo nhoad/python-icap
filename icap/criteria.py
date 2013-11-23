@@ -141,6 +141,7 @@ def handler(criteria=None, name='', raw=False):
     criteria = criteria or AlwaysCriteria()
 
     def inner(handler):
+        orig_handler = handler
         if isinstance(handler, type):
             handler = handler()
             reqmod = getattr(handler, 'reqmod', None)
@@ -158,6 +159,6 @@ def handler(criteria=None, name='', raw=False):
             key = '/'.join([name, 'respmod'])
             key = key if key.startswith('/') else '/%s' % key
             _HANDLERS[key].append((criteria, respmod, raw))
-        return handler
+        return orig_handler
 
     return inner

@@ -167,4 +167,5 @@ class TestHandlers:
 
         assert get_handler(reqmod)[0] == _HANDLERS['/reqmod'][0][1]
         assert get_handler(respmod)[0] == _HANDLERS['/respmod'][0][1]
+        assert isinstance(Foo, type)
 
