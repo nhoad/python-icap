@@ -343,13 +343,15 @@ class HTTPMessage(object):
     def body(self, value):
         if isinstance(value, bytes):
             values = [BodyPart(value, b'')]
-        else:
-            assert not isinstance(value, str)
+        elif isinstance(value, (list, tuple)):
             values = [
                 v if isinstance(v, BodyPart) else BodyPart(v, b'')
                 for v in value
             ]
-            assert all(isinstance(v.content, bytes) for v in values)
+            if not all(isinstance(v.content, bytes) for v in values):
+                raise TypeError("Unexpected body type, all body types must be 'bytes'")
+        else:
+            raise TypeError("Unexpected body type '%s', expected 'bytes' or list of 'bytes'" % type(value))
 
         self._body = values
 

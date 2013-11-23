@@ -2,6 +2,7 @@ from icap import ICAPRequest, ICAPResponse, RequestLine, HeadersDict, HTTPReques
 from icap.errors import ICAPAbort
 from icap.models import ICAPMessage, HTTPMessage
 
+
 class TestHTTPMessage(object):
     def test_is_response_and_is_response(self):
         m = HTTPMessage()
@@ -14,6 +15,32 @@ class TestHTTPMessage(object):
         m = HTTPResponse()
         assert not m.is_request
         assert m.is_response
+
+    def test_body_setter(self):
+        m = HTTPMessage()
+
+        m.body = b'foo'
+        assert m.body[0].content == b'foo'
+
+        m.body = [b'foo', b'bar', b'baz']
+        assert [b.content for b in m.body] == [b'foo', b'bar', b'baz']
+
+        m.body = (b'foo', b'bar', b'baz')
+        assert [b.content for b in m.body] == [b'foo', b'bar', b'baz']
+
+        try:
+            m.body = 1
+        except TypeError:
+            pass
+        else:
+            assert False, "invalid body type should throw error"
+
+        try:
+            m.body = 'non-bytestring'
+        except TypeError:
+            pass
+        else:
+            assert False, "invalid body type should throw error"
 
 
 class TestICAPMessage(object):
