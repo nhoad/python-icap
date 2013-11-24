@@ -190,7 +190,6 @@ class ICAPProtocol(asyncio.Protocol):
         Returns an `~icap.models.ICAPResponse` suitable for serialization.
 
         """
-        # FIXME: Session support.
         if raw:
             coro = maybe_coroutine(handler, request)
         else:
