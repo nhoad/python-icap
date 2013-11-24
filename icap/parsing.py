@@ -1,5 +1,6 @@
 import gzip
 
+from collections import namedtuple
 from io import BytesIO, SEEK_END
 
 from werkzeug import cached_property
@@ -7,8 +8,10 @@ from werkzeug import cached_property
 from .utils import parse_encapsulated_field, convert_offsets_to_sizes
 from .errors import (InvalidEncapsulatedHeadersError, MalformedRequestError,
                      abort)
-from .serialization import BodyPart
 
+
+# who could resist a class name like this?
+BodyPart = namedtuple('BodyPart', 'content header')
 
 class ParseState(object):
     empty = 1

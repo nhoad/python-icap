@@ -4,8 +4,8 @@ from mock import MagicMock, call
 
 from icap import ICAPResponse, HTTPResponse, HeadersDict
 from icap.serialization import (
-    Serializer, BodyPart, response_headers,
-    options_response_headers, remove_invalid_headers)
+    Serializer, response_headers, options_response_headers,
+    remove_invalid_headers)
 
 
 class TestSerializer(object):

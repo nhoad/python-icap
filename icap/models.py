@@ -11,7 +11,6 @@ from urllib.parse import parse_qs, urlparse
 from collections import namedtuple, OrderedDict
 
 from werkzeug import cached_property
-from .serialization import BodyPart
 
 from .errors import (
     InvalidEncapsulatedHeadersError,

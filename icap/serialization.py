@@ -8,15 +8,12 @@ directly except for special circumstances.
 import gzip
 import re
 
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict
 
 from werkzeug import http_date, cached_property
 
 from .utils import dump_encapsulated_field
 
-
-# who could resist a class name like this?
-BodyPart = namedtuple('BodyPart', 'content header')
 
 response_headers = re.compile('(%s)' % '|'.join([
     'cache-control',
