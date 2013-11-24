@@ -180,7 +180,9 @@ class TestICAPProtocol:
         assert protocol.parser.sline is None
         assert not protocol.parser.headers
         assert not protocol.parser.complete()
+        print(t)
         assert t
+        assert t.count(b'ICAP') == 1
         assert called
 
     def run_test(self, server, input_bytes, force_204=False,

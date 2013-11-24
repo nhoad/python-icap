@@ -284,7 +284,8 @@ class HTTPMessageParser(ChunkedMessageParser):
                 # end of stream, make sure we have trailing newline
                 s = self.body.readline()
 
-                if s.replace(b'\r\n', b''):
+                # FIXME: non-crlf-endings
+                if s != b'\r\n':
                     raise ChunkParsingError
 
                 self.complete(True)
