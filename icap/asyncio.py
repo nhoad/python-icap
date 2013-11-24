@@ -106,9 +106,8 @@ class ICAPProtocol(asyncio.Protocol):
             self.validate_request(request)
             handler, raw = get_handler(request)
 
-            hooks['before_handling'](request)
-
             if not request.is_options:
+                hooks['before_handling'](request)
                 request.session = yield from maybe_coroutine(get_session, request)
 
             try:
