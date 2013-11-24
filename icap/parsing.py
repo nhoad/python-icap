@@ -1,3 +1,5 @@
+import gzip
+
 from io import BytesIO, SEEK_END
 
 from werkzeug import cached_property
@@ -42,9 +44,13 @@ class ChunkedMessageParser(object):
     def on_headers_complete(self):
         pass
 
+    def on_complete(self):
+        pass
+
     def complete(self, set=False):
         if set:
             self.state = ParseState.body_complete
+            self.on_complete()
         return self.state == ParseState.body_complete
 
     def feed_line(self, line):
@@ -252,6 +258,16 @@ class HTTPMessageParser(ChunkedMessageParser):
                 assert self.complete()
                 break
             self.chunks.append(chunk)
+
+    @cached_property
+    def is_gzipped(self):
+        return 'gzip' in self.headers.get('Content-Encoding', '')
+
+    def on_complete(self):
+        if self.is_gzipped:
+            # FIXME: this should be done in a thread
+            uncompressed = gzip.decompress(b''.join(b.content for b in self.chunks))
+            self.chunks = [BodyPart(uncompressed, '')]
 
     def attempt_parse_chunk(self):
         line = self.body.readline()

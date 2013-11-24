@@ -5,11 +5,12 @@ These are all to be considered private. You should not need to use them
 directly except for special circumstances.
 """
 
+import gzip
 import re
 
 from collections import OrderedDict, namedtuple
 
-from werkzeug import http_date
+from werkzeug import http_date, cached_property
 
 from .utils import dump_encapsulated_field
 
@@ -99,6 +100,10 @@ class Serializer(object):
 
         self.write_body(stream)
 
+    @cached_property
+    def is_gzipped(self):
+        return 'gzip' in self.response.http.headers.get('Content-Encoding', '')
+
     def write_body(self, stream):
         """Write out each chunk to the given stream."""
         if not self.response.http.body:
@@ -106,6 +111,9 @@ class Serializer(object):
 
         for chunk in self.response.http.body:
             s = chunk.content
+            # FIXME: this should be done in a thread
+            if self.is_gzipped:
+                s = gzip.compress(s)
             n = len(s)
 
             header = chunk.header.strip()

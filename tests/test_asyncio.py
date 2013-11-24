@@ -435,3 +435,36 @@ class TestICAPProtocol:
         with patch('icap.asyncio.Serializer') as mock_serializer:
             i.write_response(MagicMock(), MagicMock())
             assert mock_serializer.mock_calls
+
+    def test_gzip_encoding(self):
+        input_bytes = data_string('reddit.com.request')
+
+        server = ICAPProtocolFactory()
+        protocol = server()
+        protocol.connection_made(BytesIOTransport())
+
+        called = False
+
+        @handler(raw=True)
+        def respmod(request):
+            nonlocal called
+            assert len(request.http.body) == 1
+            assert b'<!doctype html>' in request.http.body[0].content
+            called = True
+
+        for b in input_bytes:
+            f = protocol.data_received(bytes([b]))
+
+            if f is not None:
+                asyncio.get_event_loop().run_until_complete(f)
+
+        t = protocol.transport.getvalue()
+
+        assert protocol.parser.sline is None
+        assert not protocol.parser.headers
+        assert not protocol.parser.complete()
+        print(t)
+        assert t
+        assert t.count(b'ICAP') == 1
+        assert b'<!doctype html>' not in t
+        assert called
