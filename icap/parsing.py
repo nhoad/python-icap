@@ -172,6 +172,8 @@ class ICAPRequestParser(ChunkedMessageParser):
                 parser.feed_line(line)
             assert parser.headers_complete()
         elif name in ('req-body', 'res-body'):
+            self.body.seek(0)
+            self.body.truncate()
             assert parser.headers_complete()
             parser.feed_body(data)
 
@@ -251,11 +253,6 @@ class HTTPMessageParser(ChunkedMessageParser):
                 break
             self.chunks.append(chunk)
 
-    def feed_body(self, data):
-        self.body.seek(0)
-        self.body.truncate()
-        return super().feed_body(data)
-
     def attempt_parse_chunk(self):
         line = self.body.readline()
 
@@ -276,6 +273,9 @@ class HTTPMessageParser(ChunkedMessageParser):
 
                 if len(data) != size+2:
                     raise ChunkParsingError
+
+                # reset the stream so we don't create the same chunk over and over
+                self.body = BytesIO(self.body.read())
 
                 # FIXME: non-crlf-endings
                 chunk = BodyPart(data[:-2], header.strip())

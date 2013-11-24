@@ -166,6 +166,7 @@ class TestICAPProtocol:
             assert request.is_respmod
             assert request.request_line is not None
             assert request.headers == expected
+            assert len(request.http.body) == 1
             called = True
 
         for b in input_bytes:
