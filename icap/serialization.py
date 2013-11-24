@@ -109,22 +109,14 @@ class Serializer(object):
         if not self.response.http.body:
             return
 
-        for chunk in self.response.http.body:
-            s = chunk.content
-            # FIXME: this should be done in a thread
-            if self.is_gzipped:
-                s = gzip.compress(s)
-            n = len(s)
+        body = self.response.http.body
+        if self.is_gzipped:
+            body = gzip.compress(body)
 
-            header = chunk.header.strip()
-            if header and header != b'ieof':
-                header = ('%x; ' % n).encode('utf8')+header
-            else:
-                header = ('%x' % n).encode('utf8')
-
-            stream.write(header+b'\r\n')
-            stream.write(s+b'\r\n')
-
+        size = len(body)
+        header = ('%x' % size).encode('utf8')
+        stream.write(header+b'\r\n')
+        stream.write(body+b'\r\n')
         stream.write(b'0\r\n\r\n')
 
     def set_encapsulated_header(self):

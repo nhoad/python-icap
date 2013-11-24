@@ -35,7 +35,7 @@ class TestSerializer(object):
     def test_serialize_to_stream(self):
         s = ICAPResponse(http=HTTPResponse())
 
-        s.http.body = [b'a', b'b', b'c']
+        s.http.body = b'abc'
 
         stream = MagicMock()
         Serializer(s, 'asdf', is_options=False).serialize_to_stream(stream)
@@ -46,12 +46,8 @@ class TestSerializer(object):
         assert calls[1:] == [
             call.write(b'\r\n'),
             call.write(b'HTTP/1.1 200 OK\r\n\r\n'),
-            call.write(b'1\r\n'),
-            call.write(b'a\r\n'),
-            call.write(b'1\r\n'),
-            call.write(b'b\r\n'),
-            call.write(b'1\r\n'),
-            call.write(b'c\r\n'),
+            call.write(b'3\r\n'),
+            call.write(b'abc\r\n'),
             call.write(b'0\r\n\r\n')
         ]
 

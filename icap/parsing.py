@@ -251,6 +251,8 @@ class ICAPRequestParser(ChunkedMessageParser):
 
 
 class HTTPMessageParser(ChunkedMessageParser):
+    payload = b''
+
     def attempt_body_parse(self):
         while True:
             chunk = self.attempt_parse_chunk()
@@ -264,10 +266,11 @@ class HTTPMessageParser(ChunkedMessageParser):
         return 'gzip' in self.headers.get('Content-Encoding', '')
 
     def on_complete(self):
+        payload = b''.join(b.content for b in self.chunks)
         if self.is_gzipped:
             # FIXME: this should be done in a thread
-            uncompressed = gzip.decompress(b''.join(b.content for b in self.chunks))
-            self.chunks = [BodyPart(uncompressed, '')]
+            payload = gzip.decompress(payload)
+        self.payload = payload
 
     def attempt_parse_chunk(self):
         line = self.body.readline()

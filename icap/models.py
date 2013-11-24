@@ -335,7 +335,7 @@ class HTTPMessage(object):
 
     """
 
-    def __init__(self, headers=None, body=None):
+    def __init__(self, headers=None, body=b''):
         """If ``headers`` is not given, default to an empty instance of
         `~icap.models.HeadersDict`.
 
@@ -343,7 +343,7 @@ class HTTPMessage(object):
         stream, list of strings, a generator or a string.
         """
         self.headers = headers or HeadersDict()
-        self.body = body or []
+        self.body = body
 
     @property
     def body(self):
@@ -351,19 +351,10 @@ class HTTPMessage(object):
 
     @body.setter
     def body(self, value):
-        if isinstance(value, bytes):
-            values = [BodyPart(value, b'')]
-        elif isinstance(value, (list, tuple)):
-            values = [
-                v if isinstance(v, BodyPart) else BodyPart(v, b'')
-                for v in value
-            ]
-            if not all(isinstance(v.content, bytes) for v in values):
-                raise TypeError("Unexpected body type, all body types must be 'bytes'")
-        else:
-            raise TypeError("Unexpected body type '%s', expected 'bytes' or list of 'bytes'" % type(value))
+        if not isinstance(value, bytes):
+            raise TypeError("Unexpected body type '%s', expected 'bytes'" % type(value))
 
-        self._body = values
+        self._body = value
 
     def __bytes__(self):
         if self.is_request:
@@ -414,7 +405,7 @@ class HTTPRequest(HTTPMessage):
         """
         assert not isinstance(parser, ICAPRequestParser)
         assert parser.is_request
-        f = cls(parser.sline, parser.headers, parser.chunks)
+        f = cls(parser.sline, parser.headers, parser.payload)
 
         return f
 
@@ -443,4 +434,4 @@ class HTTPResponse(HTTPMessage):
         """
         assert not isinstance(parser, ICAPRequestParser)
         assert parser.is_response
-        return cls(parser.sline, parser.headers, parser.chunks)
+        return cls(parser.sline, parser.headers, parser.payload)

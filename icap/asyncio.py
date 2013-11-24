@@ -210,12 +210,7 @@ class ICAPProtocol(asyncio.Protocol):
         http = response
         response = ICAPResponse(http=http)
 
-        if len(http.body) == 1:
-            content_length = sum((len(c.content) for c in http.body))
-            http.headers.replace('Content-Length', str(content_length))
-        elif 'content-length' in http.headers:
-            del http.headers['content-length']
-            # XXX transfer-encoding chunked should be added?? :/
+        http.headers.replace('Content-Length', str(len(http.body)))
         return response
 
     @asyncio.coroutine

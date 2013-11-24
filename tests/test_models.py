@@ -20,13 +20,7 @@ class TestHTTPMessage(object):
         m = HTTPMessage()
 
         m.body = b'foo'
-        assert m.body[0].content == b'foo'
-
-        m.body = [b'foo', b'bar', b'baz']
-        assert [b.content for b in m.body] == [b'foo', b'bar', b'baz']
-
-        m.body = (b'foo', b'bar', b'baz')
-        assert [b.content for b in m.body] == [b'foo', b'bar', b'baz']
+        assert m.body == b'foo'
 
         try:
             m.body = 1

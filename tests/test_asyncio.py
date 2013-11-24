@@ -166,7 +166,7 @@ class TestICAPProtocol:
             assert request.is_respmod
             assert request.request_line is not None
             assert request.headers == expected
-            assert len(request.http.body) == 1
+            assert len(request.http.body) == 51
             called = True
 
         for b in input_bytes:
@@ -186,7 +186,7 @@ class TestICAPProtocol:
         assert called
 
     def run_test(self, server, input_bytes, force_204=False,
-                 assert_mutated=False, multi_chunk=False):
+                 assert_mutated=False):
         if force_204:
             input_bytes = input_bytes.replace(b'Encapsulated', b'Allow: 204\r\nEncapsulated')
 
@@ -208,7 +208,7 @@ class TestICAPProtocol:
         assert transaction.count(b'ISTag: ') == 1
 
         if assert_mutated and not force_204:
-            if not force_204 and not multi_chunk:
+            if not force_204:
                 assert transaction.count(b'Content-Length: ') == 1
             else:
                 assert transaction.count(b'Content-Length: ') == 0
@@ -365,7 +365,8 @@ class TestICAPProtocol:
         transaction = self.run_test(server, input_bytes, force_204=force_204)
 
         assert b'200 OK' in transaction
-        assert transaction.count(b'33; lamps') == 1
+        assert transaction.count(b'33; lamps') == 0
+        assert transaction.count(b'33\r\n') == 1
 
     def test_handle_request__string_return(self):
         input_bytes = data_string('icap_request_with_two_header_sets.request')
@@ -379,22 +380,6 @@ class TestICAPProtocol:
         transaction = self.run_test(server, input_bytes, assert_mutated=True)
 
         assert b"fooooooooooooooo" in transaction
-
-    def test_handle_request__list_return(self):
-        input_bytes = data_string('icap_request_with_two_header_sets.request')
-
-        server = ICAPProtocolFactory()
-
-        @handler(DomainCriteria('www.origin-server.com'))
-        def respmod(request):
-            return [b"foo", b"bar", b"baz"]
-
-        transaction = self.run_test(server, input_bytes, assert_mutated=True,
-                                    multi_chunk=True)
-
-        assert b"foo" in transaction
-        assert b"bar" in transaction
-        assert b"baz" in transaction
 
     def test_handle_request__raw(self):
         input_bytes = data_string('icap_request_with_two_header_sets.request')
@@ -448,8 +433,8 @@ class TestICAPProtocol:
         @handler(raw=True)
         def respmod(request):
             nonlocal called
-            assert len(request.http.body) == 1
-            assert b'<!doctype html>' in request.http.body[0].content
+            assert len(request.http.body)
+            assert b'<!doctype html>' in request.http.body
             called = True
 
         for b in input_bytes:

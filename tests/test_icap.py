@@ -11,44 +11,31 @@ def data_string(path):
 
 
 def assert_bodies_match(
-        message, expected_bodies, headers=None, total_length=None):
+        message, expected_body):
 
     assert isinstance(message, (ICAPRequest, ICAPResponse, HTTPMessage))
 
     if isinstance(message, ICAPRequest):
-        chunks = list(message.http.body)
+        body = message.http.body
     else:
-        chunks = list(message.body)
+        body = message.body
 
-    assert not isinstance(expected_bodies, str)
-    if isinstance(expected_bodies, bytes):
-        expected_bodies = [expected_bodies]
-
-    assert [b.content for b in chunks] == expected_bodies
-
-    if total_length:
-        assert total_length == len(b''.join(b.content for b in chunks))
-
-    if headers:
-        assert len(chunks) == len(headers)
-        for chunk, header in zip(chunks, headers):
-            assert chunk.header == header
+    assert not isinstance(expected_body, str)
+    assert body == expected_body
 
 
-@pytest.mark.parametrize(('input_bytes', 'expected_values'), [
+@pytest.mark.parametrize(('input_bytes', 'expected_body'), [
     (b'GET / HTTP/1.1\r\n\r\n4\r\nWiki\r\n5\r\npedia\r\nE\r\n in\r\n\r\nchunks.\r\n0\r\n\r\n',
-        dict(values=[b'Wiki', b'pedia', b' in\r\n\r\nchunks.'])),
+        b'Wikipedia in\r\n\r\nchunks.'),
     (b'GET / HTTP/1.1\r\n\r\n4;bar\r\nWiki\r\n5;foo\r\npedia\r\nE;qwer\r\n in\r\n\r\nchunks.\r\n0\r\n\r\n',
-        dict(values=[b'Wiki', b'pedia', b' in\r\n\r\nchunks.'], headers=[b'bar', b'foo', b'qwer'])),
+        b'Wikipedia in\r\n\r\nchunks.'),
     (b'GET / HTTP/1.1\r\n\r\n4;bar\r\nWiki\r\n5;foo\r\npedia\r\nE;qwer\r\n in\r\n\r\nchunks.\r\n0\r\n\r\n',
-        dict(values=[b'Wiki', b'pedia', b' in\r\n\r\nchunks.'], headers=[b'bar', b'foo', b'qwer'])),
+        b'Wikipedia in\r\n\r\nchunks.'),
 ])
-def test_chunked_messages(input_bytes, expected_values):
+def test_chunked_messages(input_bytes, expected_body):
     m = HTTPMessageParser.from_bytes(input_bytes)
 
-    assert_bodies_match(
-        m, expected_values.get('values'),
-        headers=expected_values.get('headers'), total_length=23)
+    assert_bodies_match(m, expected_body)
 
 
 def test_multiline_headers():
