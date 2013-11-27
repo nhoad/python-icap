@@ -2,6 +2,7 @@
 Misc function and classes for running the ICAP server.
 """
 import asyncio
+import logging
 import signal
 import uuid
 
@@ -14,6 +15,9 @@ __all__ = [
 ]
 
 
+log = logging.getLogger(__name__)
+
+
 class Hooks(dict):
     """Dispatch class for providing hooks at certain parts of the ICAP
     transaction.
@@ -24,31 +28,6 @@ class Hooks(dict):
     >>> @hooks('options_headers')
     >>> def extra_headers():
     ...     return {'new': 'headers'}
-
-
-    Available hooks:
-        options_headers:
-            Return dictionary of additional headers to add to the OPTIONS
-            response.
-
-            arguments: None.
-
-        is_tag:
-            Return a string to be used for a custom ISTag header on the
-            response. String will be sliced to maximum of 32 bytes.
-
-            arguments: request object, may be None.
-
-        before_handling:
-            Called with an ICAP request before it is passed to a handler.
-
-            arguments: ICAP request object.
-
-        before_serialization:
-            Called with an ICAP request and response before serializing the
-            response.
-
-            arguments: ICAP request object, ICAP response object.
 
     """
     def __getitem__(self, name):
@@ -68,6 +47,7 @@ class Hooks(dict):
             try:
                 return func(*args, **kwargs)
             except Exception as e:
+                log.error("Error calling hook '%s'", name, exc_info=True)
                 return default
         return safe_callable
 

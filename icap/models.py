@@ -4,11 +4,8 @@ comprising them.
 
 """
 
-
-from urllib.parse import urlencode
-from urllib.parse import parse_qs, urlparse
-
 from collections import namedtuple, OrderedDict
+from urllib.parse import urlencode, parse_qs, urlparse
 
 from werkzeug import cached_property
 

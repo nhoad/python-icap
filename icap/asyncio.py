@@ -19,6 +19,8 @@ log = logging.getLogger(__name__)
 
 
 class ICAPProtocol(asyncio.Protocol):
+    """Protocol for parsing ICAP requests and serializing ICAP responses."""
+
     def __init__(self, factory):
         self.parser = ICAPRequestParser()
         self.factory = factory
