@@ -15,6 +15,7 @@ __all__ = [
     'BaseCriteria',
     'RegexCriteria',
     'DomainCriteria',
+    'ContentTypeCriteria',
 ]
 
 
@@ -31,18 +32,55 @@ class BaseCriteria(object):
     def __call__(self, request):
         raise NotImplementedError()
 
+    def __and__(self, other):
+        return AllOfCriteria(self, other)
+
+    def __or__(self, other):
+        return AnyOfCriteria(self, other)
+
+
+class AnyOfCriteria(BaseCriteria):
+    """Criteria that matches only if any given child criteria match."""
+
+    def __init__(self, *criteria):
+        super().__init__()
+        self.criteria = criteria
+
+    def __call__(self, request):
+        return any(c(request) for c in self.criteria)
+
+    def __str__(self):
+        return '<%s (%s)>' % (self.__class__.__name__, ', '.join(map(str, self.criteria)))
+
+
+class AllOfCriteria(BaseCriteria):
+    """Criteria that matches only if all given child criteria match."""
+
+    def __init__(self, *criteria):
+        super().__init__()
+        self.criteria = criteria
+
+    def __call__(self, request):
+        return all(c(request) for c in self.criteria)
+
+    def __str__(self):
+        return '<%s (%s)>' % (self.__class__.__name__, ', '.join(map(str, self.criteria)))
+
 
 class RegexCriteria(BaseCriteria):
     """Criteria that processes requests based on the URL, by a regex."""
     priority = 3
 
     def __init__(self, regex):
-        super(RegexCriteria, self).__init__()
+        super().__init__()
         self.regex = re.compile(regex)
 
     def __call__(self, request):
         url = urllib.parse.urlunparse(request.session['url'])
         return bool(self.regex.match(url))
+
+    def __str__(self):
+        return '<%s (%r)>' % (self.__class__.__name__, self.regex.pattern)
 
 
 class DomainCriteria(BaseCriteria):
@@ -54,7 +92,7 @@ class DomainCriteria(BaseCriteria):
     priority = 2
 
     def __init__(self, *domains):
-        super(DomainCriteria, self).__init__()
+        super().__init__()
         self.domains = domains
 
     def __call__(self, request):
@@ -67,6 +105,30 @@ class DomainCriteria(BaseCriteria):
         match = functools.partial(fnmatch.fnmatch, host)
 
         return any(match(pattern) for pattern in self.domains)
+
+    def __str__(self):
+        return '<%s (%r)>' % (self.__class__.__name__, ', '.join(self.domains))
+
+
+class ContentTypeCriteria(BaseCriteria):
+    """Criteria that matches responses based on the Content-Type header."""
+
+    priority = 2
+
+    def __init__(self, *content_types):
+        super().__init__()
+        self.content_types = content_types
+
+    def __call__(self, request):
+        if request.is_reqmod:
+            return False
+        headers = request.http.headers
+        content_type = headers.get('content-type', '')
+
+        return content_type in self.content_types
+
+    def __str__(self):
+        return '<%s (%r)>' % (self.__class__.__name__, ', '.join(self.content_types))
 
 
 class AlwaysCriteria(BaseCriteria):

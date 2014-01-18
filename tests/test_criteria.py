@@ -2,7 +2,7 @@ import urllib.parse
 
 from mock import MagicMock
 
-from icap import RegexCriteria, DomainCriteria, handler
+from icap import RegexCriteria, DomainCriteria, handler, ContentTypeCriteria
 from icap.criteria import _HANDLERS, sort_handlers, get_handler
 
 
@@ -15,6 +15,22 @@ class FakeRequest(object):
         self.http.headers.get.return_value = self.session['url'].netloc
 
         self.is_reqmod = True
+
+
+def test_AnyOfCriteria():
+    c = DomainCriteria('google.com') | RegexCriteria('.*gbogle.c[ao]m.*')
+
+    assert c(FakeRequest('http://google.com'))
+    assert c(FakeRequest('http://gbogle.cam'))
+    assert c(FakeRequest('http://gbogle.com'))
+    assert not c(FakeRequest('http://twitter.com'))
+
+
+def test_AllOfCriteria():
+    c = DomainCriteria('google.com') & RegexCriteria('https://')
+
+    assert not c(FakeRequest('http://google.com'))
+    assert c(FakeRequest('https://google.com'))
 
 
 class TestDomainCriteria(object):
@@ -53,6 +69,30 @@ class TestDomainCriteria(object):
 
         r = DomainCriteria('google.com')
         assert not r(request)
+
+
+class TestContentTypeCriteria:
+    def test_no_match_on_request(self):
+        r = ContentTypeCriteria()
+        assert not r(FakeRequest('foo'))
+
+    def test_no_match_on_missing_content_type(self):
+        r = ContentTypeCriteria()
+        f = FakeRequest('foo')
+        f.is_reqmod = False
+        assert not r(f)
+
+    def test_no_match_on_wrong_content_type(self):
+        pass
+
+    def test_match(self):
+        f = FakeRequest('foo')
+        f.is_reqmod = False
+        r = ContentTypeCriteria('text/html')
+
+        f.http.headers.get.return_value = 'text/html'
+
+        assert r(f)
 
 
 def test_RegexCriteria():

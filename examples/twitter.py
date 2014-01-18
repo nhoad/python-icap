@@ -1,9 +1,9 @@
 from lxml import html
 
-from icap import run, handler, DomainHandler, ContentTypeHandler
+from icap import run, handler, DomainCriteria, ContentTypeCriteria
 
 
-@handler(DomainHandler('youtube.com') & ContentTypeHandler('text/html'))
+@handler(DomainCriteria('youtube.com') & ContentTypeCriteria('text/html'))
 class Twitter:
     def respmod(request):
         doc = html.document_fromstring(request.body.decode('utf8'))
