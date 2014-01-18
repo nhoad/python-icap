@@ -1,4 +1,9 @@
-Python ICAP server implemented using asyncio.
+Python ICAP server implemented using asyncio. Contains classes for parsing and
+handling ICAP requests, and higher-level objects for routing requests and
+performing asynchronous operations.
+
+Still very much in the early stages right now, although usable. API can be
+considered reasonably stable.
 
 TODO:
     - generated session IDs when X-Session-ID is not available.
