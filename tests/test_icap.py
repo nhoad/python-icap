@@ -41,12 +41,67 @@ def test_chunked_messages(input_bytes, expected_body):
 def test_multiline_headers():
     s = (
         b'OPTIONS / ICAP/1.0\r\n'
-        b'Great-header: foo\r\n'
+        b'Great-header: foo \r\n'
         b'\t       bar\r\n'
         b'\r\n'
     )
     m = ICAPRequestParser.from_bytes(s)
     assert m.headers['great-header'] == 'foo bar'
+
+
+@pytest.mark.parametrize(('input_bytes', 'expected_headers', 'expected_sline'), [
+    (
+        b'GET / HTTP/1.1\r\nen-US Content-Type: text/xml\r\n\r\n0\r\n\r\n',
+        HeadersDict([('en-US Content-Type', 'text/xml')]),
+        b'GET / HTTP/1.1',
+    ),
+    (
+        'HTTP/1.1 500 Oriëntatieprobleem\r\n\r\n0\r\n\r\n'.encode('utf8'),
+        HeadersDict(),
+        'HTTP/1.1 500 Oriëntatieprobleem'.encode('utf8'),
+    ),
+    (
+        b'GET / HTTP/1.1\r\nFoo: \r\n\r\n0\r\n\r\n',
+        HeadersDict([('Foo', '')]),
+        b'GET / HTTP/1.1',
+    ),
+    (
+        b'GET / HTTP/1.1\r\nFoo: \r\n\r\n0    \r\n\r\n',
+        HeadersDict([('Foo', '')]),
+        b'GET / HTTP/1.1',
+    ),
+    (
+        b'GET / HTTP/1.1\r\nFoo: \r\n\r\n000\r\n\r\n',
+        HeadersDict([('Foo', '')]),
+        b'GET / HTTP/1.1',
+    ),
+    (
+        b"GET / HTTP/1.1\r\nLine1: abc\r\n\tdef\r\n ghi\r\n\t\tjkl\r\n  mno \r\n\t \tqrs\r\nLine2: \t line2\t\r\n\r\n",
+        HeadersDict([
+            ('Line1', 'abcdefghijklmno qrs'),
+            ('Line2', 'line2\t'),
+        ]),
+        b"GET / HTTP/1.1",
+    ),
+    (
+        b'CONNECT home_0.netscape.com:443 HTTP/1.0\r\nFoo: \r\n\r\n0\r\n\r\n',
+        HeadersDict([('Foo', '')]),
+        b'CONNECT home_0.netscape.com:443 HTTP/1.0',
+    ),
+])
+def test_horrible_http_parsing(input_bytes, expected_headers, expected_sline):
+    m = HTTPMessageParser.from_bytes(input_bytes)
+
+    print(bytes(m.headers))
+    print(bytes(expected_headers))
+    assert m.headers == expected_headers
+
+    if m.is_request:
+        assert bytes(m.request_line) == expected_sline
+    elif m.is_response:
+        assert bytes(m.status_line) == expected_sline
+    else:
+        assert False, "Not a request or response!"
 
 
 def test_icap_parsing_simple():

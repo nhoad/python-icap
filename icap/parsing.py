@@ -115,20 +115,26 @@ class ChunkedMessageParser(object):
             self.headers_complete(True)
             return
 
+        header = header.replace('\r\n', '')
+
         # multiline headers
         if header.startswith(('\t', ' ')):
             k = list(self.headers.keys())[-1]
-            v = self.headers.pop(k)
+            from collections import OrderedDict
+            raw_v = OrderedDict.__getitem__(self.headers, k)
+            k, v = raw_v[-1]
 
             # section 4.2 says that we MAY reduce whitespace down to a single
             # character, so let's do it.
-            v = ' '.join((v, header.strip()))
+            v = ''.join((v, header.lstrip()))
+
+            raw_v[-1] = k, v
         else:
-            k, v = header.strip().split(':', 1)
+            k, v = header.split(':', 1)
             k = k.rstrip()
             v = v.lstrip()
 
-        self.headers[k] = v
+            self.headers[k] = v
 
     @cached_property
     def is_request(self):
