@@ -88,6 +88,27 @@ def test_multiline_headers():
         HeadersDict([('Foo', '')]),
         b'CONNECT home_0.netscape.com:443 HTTP/1.0',
     ),
+    # FIXME: trailing-headers
+    #(
+    #    b"POST /chunked_w_trailing_headers HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\nVary: *\r\nContent-Type: text/plain\r\n\r\n",
+    #    HeadersDict([('Transfer-Encoding', 'chunked')]),
+    #    b"POST /chunked_w_trailing_headers HTTP/1.1",
+    #),
+    # FIXME: http-0.9
+    #(
+    #    b"GET /\r\n\r\n0\r\n\r\n",
+    #    HeadersDict(),
+    #    b'GET /',
+    #),
+    # FIXME: non-crlf-endings
+    #(
+    #    b'GET / HTTP/1.1\nFoo: \nBar: baz\n0\n\n',
+    #    HeadersDict([
+    #        ('Foo', ''),
+    #        ('Bar', 'baz'),
+    #    ]),
+    #    b'GET / HTTP/1.1',
+    #),
 ])
 def test_horrible_http_parsing(input_bytes, expected_headers, expected_sline):
     m = HTTPMessageParser.from_bytes(input_bytes)
