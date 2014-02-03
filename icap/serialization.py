@@ -6,6 +6,7 @@ directly except for special circumstances.
 """
 
 import gzip
+import logging
 import re
 
 from collections import OrderedDict
@@ -14,6 +15,8 @@ from werkzeug import http_date, cached_property
 
 from .utils import dump_encapsulated_field
 
+
+log = logging.getLogger(__name__)
 
 response_headers = re.compile('(%s)' % '|'.join([
     'cache-control',
@@ -87,6 +90,9 @@ class Serializer(object):
         if self.response.status_line.code != 200 or self.is_options:
             stream.write(bytes(self.response))
             stream.write(b'\r\n')
+            http = self.response.http
+            if http and http.body_bytes:
+                log.warning("opt-body is not supported")
             return
 
         # FIXME: need to serialize opt-body requests too.
@@ -103,7 +109,7 @@ class Serializer(object):
 
     def write_body(self, stream):
         """Write out each chunk to the given stream."""
-        if not self.response.http.body:
+        if not self.response.http.body_bytes:
             return
 
         body = self.response.http.body_bytes
@@ -135,7 +141,7 @@ class Serializer(object):
                 encapsulated = OrderedDict([('res-hdr', 0)])
                 body_key = 'res-body'
 
-            if not http or not http.body:
+            if not http or not http.body_bytes:
                 body_key = 'null-body'
 
             encapsulated[body_key] = len(http_preamble)

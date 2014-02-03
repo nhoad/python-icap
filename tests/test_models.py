@@ -49,6 +49,7 @@ class TestHTTPMessage(object):
         else:
             assert False, "Content-Type with no charset should raise TypeError"
 
+
 class TestICAPMessage(object):
     def test_is_response_and_is_response(self):
         m = ICAPMessage()

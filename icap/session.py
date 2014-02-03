@@ -16,8 +16,12 @@ TODO: Make the X-Session-ID configurable.
 import asyncio
 import re
 import uuid
+import logging
 
 from .server import hooks
+
+
+log = logging.getLogger(__name__)
 
 
 @hooks('session_manager')
@@ -66,6 +70,7 @@ def make_session_id(request):
     if 'X-Session-ID' in request.headers:
         session_id = request.headers['X-Session-ID']
     else:
+        log.warning("X-Session-ID header not available, using UUID")
         # FIXME: generate id from headers
         session_id = uuid.uuid4().hex
     return session_id
