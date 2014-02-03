@@ -20,7 +20,7 @@ class TestHTTPMessage(object):
         m = HTTPMessage()
 
         m.body = b'foo'
-        assert m.body == b'foo'
+        assert m.body_bytes == b'foo'
 
         try:
             m.body = 1
@@ -29,13 +29,25 @@ class TestHTTPMessage(object):
         else:
             assert False, "invalid body type should throw error"
 
+        m.body = 'non-bytestring'
+
+        m.headers['Content-Type'] = 'text/plain'
+
         try:
             m.body = 'non-bytestring'
         except TypeError:
             pass
         else:
-            assert False, "invalid body type should throw error"
+            assert False, "Content-Type with no charset should raise TypeError"
 
+        m.headers.replace('Content-Type', 'image/png')
+
+        try:
+            m.body = 'non-bytestring'
+        except TypeError:
+            pass
+        else:
+            assert False, "Content-Type with no charset should raise TypeError"
 
 class TestICAPMessage(object):
     def test_is_response_and_is_response(self):

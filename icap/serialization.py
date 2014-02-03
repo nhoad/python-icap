@@ -106,7 +106,7 @@ class Serializer(object):
         if not self.response.http.body:
             return
 
-        body = self.response.http.body
+        body = self.response.http.body_bytes
         if self.is_gzipped:
             body = gzip.compress(body)
 

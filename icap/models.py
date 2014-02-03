@@ -7,7 +7,7 @@ comprising them.
 from collections import namedtuple, OrderedDict
 from urllib.parse import urlencode, parse_qs, urlparse
 
-from werkzeug import cached_property
+from werkzeug import cached_property, parse_options_header
 
 from .errors import (
     InvalidEncapsulatedHeadersError,
@@ -343,12 +343,65 @@ class HTTPMessage(object):
 
     @property
     def body(self):
+        """Returns the body of the message.
+
+        If the Content-Type header of the message contains a charset, it
+        will return the body decoded using that charset. Otherwise, it will
+        return the bytes.
+
+        If the Content-Type header is completely missing, 'text/plain;
+        charset=us-ascii' is assumed, as per RFC1341.
+        """
+        body = self.body_bytes
+
+        # FIXME: caching this in some way would be useful... be it the decoded
+        # string or the charset.
+        content_type, options = parse_options_header(
+            self.headers.get('content-type', 'text/plain; charset=us-ascii'))
+        charset = options.get('charset', '')
+        if charset:
+            body = body.decode(charset)
+
+        return body
+
+    @property
+    def body_bytes(self):
+        """Returns the body of the message as plain bytes with no decoding."""
         return self._body
 
     @body.setter
     def body(self, value):
+        """Setter for the body attribute.
+
+        If ``value`` is of type `bytes`, then nothing complicated occurs, the
+        attribute is merely set.
+
+        If ``value`` is of type `str`, it will store the body encoded using the
+        charset in the Content-Type header. If the Content-Type header is
+        completely missing, 'text/plain; charset=us-ascii' is assumed, as per
+        RFC1341.
+
+        If the Content-Type header is available without a charset, then a
+        TypeError will be raised. Given this will only happen in a situation
+        you have control of (i.e. modifying the body in a handler), it is your
+        responsibility to ensure you handle this situation properly by encoding
+        the string before setting it.
+        """
+
+        if isinstance(value, str):
+            content_type, options = parse_options_header(
+                self.headers.get('content-type',
+                                 'text/plain; charset=us-ascii'))
+            charset = options.get('charset', '')
+
+            # protect people from idiots that set the charset on things they
+            # never, ever should. Take, for example, Yammer, who set the
+            # charset on images and video.
+            if charset and content_type.startswith(('application', 'text', 'message')):
+                value = value.encode(charset)
+
         if not isinstance(value, bytes):
-            raise TypeError("Unexpected body type '%s', expected 'bytes'" % type(value))
+            raise TypeError("Could not figure out body encoding. Encode payload appropriately.")
 
         self._body = value
 

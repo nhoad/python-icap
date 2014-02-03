@@ -68,7 +68,7 @@ def clamav_scan(payload):
 
 @handler()
 def respmod(request):
-    found_virus, name = yield from clamav_scan(request.body)
+    found_virus, name = yield from clamav_scan(request.body_bytes)
 
     if found_virus:
         return HTTPResponse(body=b"A virus was found: " + name)

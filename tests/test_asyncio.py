@@ -434,7 +434,8 @@ class TestICAPProtocol:
         def respmod(request):
             nonlocal called
             assert len(request.http.body)
-            assert b'<!doctype html>' in request.http.body
+            assert '<!doctype html>' in request.http.body
+            assert b'<!doctype html>' in request.http.body_bytes
             called = True
 
         for b in input_bytes:

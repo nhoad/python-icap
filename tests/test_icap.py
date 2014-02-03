@@ -18,9 +18,10 @@ def assert_bodies_match(
     if isinstance(message, ICAPRequest):
         body = message.http.body
     else:
-        body = message.body
+        body = message.body_bytes
 
-    assert not isinstance(expected_body, str)
+    assert isinstance(expected_body, bytes)
+    assert isinstance(body, bytes)
     assert body == expected_body
 
 
