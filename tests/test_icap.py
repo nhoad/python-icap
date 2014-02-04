@@ -95,12 +95,6 @@ def test_multiline_headers():
     #    HeadersDict([('Transfer-Encoding', 'chunked')]),
     #    b"POST /chunked_w_trailing_headers HTTP/1.1",
     #),
-    # FIXME: http-0.9
-    #(
-    #    b"GET /\r\n\r\n0\r\n\r\n",
-    #    HeadersDict(),
-    #    b'GET /',
-    #),
     # FIXME: non-crlf-endings
     #(
     #    b'GET / HTTP/1.1\nFoo: \nBar: baz\n0\n\n',
