@@ -114,6 +114,7 @@ class Serializer(object):
 
         body = self.response.http.body_bytes
         if self.is_gzipped:
+            # FIXME: this should be done in a thread
             body = gzip.compress(body)
 
         size = len(body)
