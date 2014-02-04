@@ -23,6 +23,8 @@ def start_client(pid):
     with open('data/icap_request_with_two_header_sets.request', 'rb') as f:
         sent = f.read()
 
+    sent = sent.replace(b'\r\nEncapsulated', b'\r\nX-Session-ID: foo\r\nEncapsulated')
+
     loop = asyncio.get_event_loop()
 
     fastest = 1.0
