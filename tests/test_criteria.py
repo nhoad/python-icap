@@ -2,7 +2,10 @@ import urllib.parse
 
 from mock import MagicMock
 
-from icap import RegexCriteria, DomainCriteria, handler, ContentTypeCriteria, MethodCriteria, HeaderCriteria, HeadersDict, HTTPRequestCriteria, HTTPResponseCriteria
+from icap import (
+    RegexCriteria, DomainCriteria, handler, ContentTypeCriteria,
+    MethodCriteria, HeaderCriteria, HeadersDict, HTTPRequestCriteria,
+    HTTPResponseCriteria, StatusCodeCriteria)
 from icap.criteria import _HANDLERS, sort_handlers, get_handler
 
 
@@ -165,6 +168,27 @@ def test_MethodCriteria():
     assert c(FakeRequest('foo', method='POST'))
     assert c(FakeRequest('foo', method='GET'))
     assert not c(FakeRequest('foo', method='PUT'))
+
+
+def test_StatusCodeCriteria():
+    a = StatusCodeCriteria(200, 201)
+
+    r = FakeRequest('foo')
+    r.is_respmod = False
+
+    assert not a(r)
+
+    r.is_respmod = True
+    assert not a(r)
+
+    r.http.status_line.code = 200
+    assert a(r)
+
+    r.http.status_line.code = 201
+    assert a(r)
+
+    r.http.status_line.code = 400
+    assert not a(r)
 
 
 def test_HeaderCriteria():

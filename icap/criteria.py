@@ -19,6 +19,7 @@ __all__ = [
     'HeaderCriteria',
     'MethodCriteria',
     'RegexCriteria',
+    'StatusCodeCriteria',
     'handler',
 ]
 
@@ -158,7 +159,11 @@ class HTTPResponseCriteria(BaseCriteria):
 
 
 class StatusCodeCriteria(HTTPResponseCriteria):
-    """Criteria that matches on the status code of the encapsulated HTTP response."""
+    """Criteria that matches on the status code of the encapsulated HTTP response.
+
+    Never matches on HTTP requests.
+
+    """
 
     def __init__(self, *status_codes):
         self.status_codes = status_codes
@@ -166,7 +171,9 @@ class StatusCodeCriteria(HTTPResponseCriteria):
     def __call__(self, request):
         http = request.http
 
-        return (super()() and http.status_line.code in self.status_codes)
+        # super isn't callable! The horror.
+        return (super().__call__(request) and
+                http.status_line.code in self.status_codes)
 
 
 class HeaderCriteria(BaseCriteria):
