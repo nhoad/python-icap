@@ -20,3 +20,4 @@ TODO:
       coroutines.
     - Allow for particularly horrible yet perfectly valid HTTP.
     - SSL
+    - Replace assertions with proper exceptions.
