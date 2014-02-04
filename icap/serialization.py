@@ -109,6 +109,8 @@ class Serializer(object):
 
     def write_body(self, stream):
         """Write out each chunk to the given stream."""
+        self.response.http.pre_serialization()
+
         if not self.response.http.body_bytes:
             return
 

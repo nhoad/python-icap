@@ -52,7 +52,6 @@ class TestSerializer(object):
         ]
 
 
-
 @pytest.mark.parametrize('is_options', [True, False])
 def test_remove_invalid_headers(is_options):
     valid_response_headers = response_headers.pattern[1:-1].split('|')

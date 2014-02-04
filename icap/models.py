@@ -356,9 +356,8 @@ class HTTPMessage(object):
 
         # FIXME: caching this in some way would be useful... be it the decoded
         # string or the charset.
-        content_type, options = parse_options_header(
-            self.headers.get('content-type', 'text/plain; charset=us-ascii'))
-        charset = options.get('charset', '')
+        content_type, charset = self.content_type
+
         if charset:
             body = body.decode(charset)
 
@@ -389,10 +388,7 @@ class HTTPMessage(object):
         """
 
         if isinstance(value, str):
-            content_type, options = parse_options_header(
-                self.headers.get('content-type',
-                                 'text/plain; charset=us-ascii'))
-            charset = options.get('charset', '')
+            content_type, charset = self.content_type
 
             # protect people from idiots that set the charset on things they
             # never, ever should. Take, for example, Yammer, who set the
@@ -431,9 +427,25 @@ class HTTPMessage(object):
         """
         return isinstance(self, HTTPResponse)
 
+    @property
+    def content_type(self):
+        content_type, options = parse_options_header(
+            self.headers.get('content-type', 'text/plain; charset=us-ascii'))
+        charset = options.get('charset', '')
+        return content_type, charset
+
+    def pre_serialization(self):
+        """Method called prior to serialisation. Useful for writing any
+        higher-level constructs back to bytes.
+
+        """
+        pass
+
 
 class HTTPRequest(HTTPMessage):
     """Representation of a HTTP request."""
+
+    parsed_post_data = False
 
     def __init__(self, request_line=None, *args, **kwargs):
         """If no ``request_line`` is given, a default of "GET / HTTP/1.1" will
@@ -457,6 +469,28 @@ class HTTPRequest(HTTPMessage):
         f = cls(parser.sline, parser.headers, parser.payload)
 
         return f
+
+    def pre_serialization(self):
+        """Prior to serialization, write POST data back to bytes if they've
+        been parsed out.
+
+        """
+        if not self.parsed_post_data:
+            return
+
+        content_type, charset = self.content_type
+        s = urlencode(self.post, doseq=True, encoding=charset or 'utf-8')
+        self._body = s.encode(charset or 'utf-8')
+
+    @cached_property
+    def post(self):
+        content_type, charset = self.content_type
+
+        if content_type == 'application/x-www-form-urlencoded':
+            self.parsed_post_data = True
+            return parse_qs(self.body, encoding=charset or 'utf-8')
+        else:
+            return None
 
 
 class HTTPResponse(HTTPMessage):

@@ -267,3 +267,16 @@ def test_malformed_request_line(input_bytes):
         pass
     else:
         assert False, "Request is malformed, exception not raised."  # pragma: no cover
+
+
+def test_post_data_parsing_and_serialization():
+    with open('data/http_request_with_post_data.request', 'rb') as f:
+        data = f.read()
+
+    request = HTTPMessageParser.from_bytes(data)
+
+    request.post.clear()
+    request.post['foo'] = ['bar']
+    request.pre_serialization()
+
+    assert b'foo=bar' in request.body_bytes

@@ -13,7 +13,7 @@ TODO:
     - remove all hop-by-hop headers
     - ensure required authorization headers are preserved
     - Allow 206 support (see Squid option)
-    - Automated parsing of POST data (both multipart and not)
+    - Automated parsing of multipart data (similar to POST parsing)
     - Lots more logging.
     - Streaming body support. ICAP supports the idea of early returns, so
       theoretically this is possible. It would be great to do this with
