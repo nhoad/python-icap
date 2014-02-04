@@ -2,7 +2,7 @@ import urllib.parse
 
 from mock import MagicMock
 
-from icap import RegexCriteria, DomainCriteria, handler, ContentTypeCriteria, MethodCriteria, HeaderCriteria, HeadersDict
+from icap import RegexCriteria, DomainCriteria, handler, ContentTypeCriteria, MethodCriteria, HeaderCriteria, HeadersDict, HTTPRequestCriteria, HTTPResponseCriteria
 from icap.criteria import _HANDLERS, sort_handlers, get_handler
 
 
@@ -38,6 +38,29 @@ def test_AllOfCriteria():
 
     assert not c(FakeRequest('http://google.com'))
     assert c(FakeRequest('https://google.com'))
+
+
+def test_HTTPRequestCriteria():
+    a = HTTPRequestCriteria()
+
+    assert a(FakeRequest('foo'))
+
+    r = FakeRequest('foo')
+    r.is_reqmod = False
+
+    assert not a(r)
+
+
+def test_HTTPResponseCriteria():
+    a = HTTPResponseCriteria()
+
+    r = FakeRequest('foo')
+    r.is_respmod = True
+
+    assert a(r)
+
+    r.is_respmod = False
+    assert not a(r)
 
 
 class TestDomainCriteria(object):

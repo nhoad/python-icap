@@ -14,6 +14,8 @@ __all__ = [
     'BaseCriteria',
     'ContentTypeCriteria',
     'DomainCriteria',
+    'HTTPRequestCriteria',
+    'HTTPResponseCriteria',
     'HeaderCriteria',
     'MethodCriteria',
     'RegexCriteria',
@@ -141,6 +143,30 @@ class MethodCriteria(BaseCriteria):
 
     def __call__(self, request):
         return request.http.request_line.method in self.methods
+
+
+class HTTPRequestCriteria(BaseCriteria):
+    """Criteria that matches if the request is a REQMOD."""
+    def __call__(self, request):
+        return request.is_reqmod
+
+
+class HTTPResponseCriteria(BaseCriteria):
+    """Criteria that matches if the request is a RESPMOD."""
+    def __call__(self, request):
+        return request.is_respmod
+
+
+class StatusCodeCriteria(HTTPResponseCriteria):
+    """Criteria that matches on the status code of the encapsulated HTTP response."""
+
+    def __init__(self, *status_codes):
+        self.status_codes = status_codes
+
+    def __call__(self, request):
+        http = request.http
+
+        return (super()() and http.status_line.code in self.status_codes)
 
 
 class HeaderCriteria(BaseCriteria):
