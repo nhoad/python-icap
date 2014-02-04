@@ -31,6 +31,6 @@ def benchmark_HTTP_parsing(request):
     HTTPMessageParser.from_bytes(request)
 
 
-@benchmark(1800, 0.0006, request=open('data/ninemsn.com.au', 'rb').read())
+@benchmark(1800, 0.0007, request=open('data/ninemsn.com.au', 'rb').read())
 def benchmark_HTTP_parsing(request):
     HTTPMessageParser.from_bytes(request)

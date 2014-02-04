@@ -18,5 +18,8 @@ unit-tests:
 service-tests:
 	$(PYTHON) tests/servicetest*.py
 
+benchmarks:
+	$(PYTHON) tests/benchmarks.py
+
 doc:
 	make -C docs html
