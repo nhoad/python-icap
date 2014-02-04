@@ -10,6 +10,13 @@ from .errors import (InvalidEncapsulatedHeadersError, MalformedRequestError,
                      abort)
 
 
+__all__ = [
+    'ChunkedMessageParser',
+    'ICAPRequestParser',
+    'HTTPMessageParser',
+]
+
+
 # who could resist a class name like this?
 BodyPart = namedtuple('BodyPart', 'content header')
 
