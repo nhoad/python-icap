@@ -1,0 +1,4 @@
+REQMOD icap://icap.example.org/satisf ICAP/1.0
+Host: icap.example.org
+Encapsulated: null-body=0
+

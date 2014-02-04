@@ -1,0 +1,11 @@
+Host: icap-server.net
+Encapsulated: res-hdr=0, null-body=222
+
+HTTP/1.1 200 OK
+Date: Mon, 10 Jan 2000  09:55:21 GMT
+Via: 1.0 icap.example.org (ICAP Example RespMod Service 1.1)
+Server: Apache/1.3.6 (Unix)
+ETag: "63840-1ab7-378d415b"
+Content-Type: text/html
+Content-Length: 92
+

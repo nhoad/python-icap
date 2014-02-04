@@ -1,0 +1,12 @@
+REQMOD /reqmod ICAP/1.0
+Host: icap-server.net
+Encapsulated: req-hdr=0, null-body=170
+Date: Mon, 10 Jan 2000  09:55:21 GMT
+
+GET / HTTP/1.1
+Host: www.origin-server.com
+Accept: text/html, text/plain
+Accept-Encoding: compress
+Cookie: ff39fk3jur@4ii0e02i
+If-None-Match: "xyzzy", "r2d2xxxx"
+

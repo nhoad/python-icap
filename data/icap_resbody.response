@@ -1,0 +1,8 @@
+REQMOD icap://icap.example.org/satisf ICAP/1.0
+Host: icap.example.org
+Encapsulated: res-body=0
+
+33
+This is data that was returned by an origin server.
+0
+
