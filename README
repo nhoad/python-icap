@@ -19,3 +19,4 @@ TODO:
       theoretically this is possible. It would be great to do this with
       coroutines.
     - Allow for particularly horrible yet perfectly valid HTTP.
+    - SSL

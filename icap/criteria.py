@@ -11,11 +11,13 @@ _HANDLERS = defaultdict(list)
 
 
 __all__ = [
-    'handler',
     'BaseCriteria',
-    'RegexCriteria',
-    'DomainCriteria',
     'ContentTypeCriteria',
+    'DomainCriteria',
+    'HeaderCriteria',
+    'MethodCriteria',
+    'RegexCriteria',
+    'handler',
 ]
 
 
@@ -129,6 +131,38 @@ class ContentTypeCriteria(BaseCriteria):
 
     def __str__(self):
         return '<%s (%r)>' % (self.__class__.__name__, ', '.join(self.content_types))
+
+
+class MethodCriteria(BaseCriteria):
+    """Criteria that matches on the method of the encapsulated HTTP request."""
+
+    def __init__(self, *methods):
+        self.methods = {s.upper() for s in methods}
+
+    def __call__(self, request):
+        return request.http.request_line.method in self.methods
+
+
+class HeaderCriteria(BaseCriteria):
+    """Criteria that matches on the presence of a header, optionally matching
+    on the value of the header.
+
+    """
+    def __init__(self, key, *values):
+        self.key = key.lower()
+        self.values = set(values)
+        self.check_values = bool(values)
+
+    def __call__(self, request):
+        values = request.http.headers.getlist(self.key)
+
+        if values:
+            if self.check_values:
+                return bool(self.values & set(values))
+            else:
+                return True
+
+        return False
 
 
 class AlwaysCriteria(BaseCriteria):

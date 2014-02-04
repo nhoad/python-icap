@@ -1,10 +1,12 @@
+import pytest
+
 from icap import ICAPRequest, ICAPResponse, RequestLine, HeadersDict, HTTPRequest, HTTPResponse, StatusLine
 from icap.errors import ICAPAbort
 from icap.models import ICAPMessage, HTTPMessage
 
 
 class TestHTTPMessage(object):
-    def test_is_response_and_is_response(self):
+    def test_is_request_and_is_response(self):
         m = HTTPMessage()
         assert not (m.is_request or m.is_response)
 
@@ -15,6 +17,20 @@ class TestHTTPMessage(object):
         m = HTTPResponse()
         assert not m.is_request
         assert m.is_response
+
+    @pytest.mark.parametrize('cls', [
+        HTTPRequest,
+        HTTPResponse,
+    ])
+    def test_default_attributes(self, cls):
+        m = cls()
+
+        assert m.request_line == RequestLine('GET', '/', 'HTTP/1.1')
+        assert m.headers == HeadersDict()
+
+        if cls == HTTPResponse:
+            assert m.request_headers == HeadersDict()
+            assert m.status_line == StatusLine('HTTP/1.1', 200, 'OK')
 
     def test_body_setter(self):
         m = HTTPMessage()

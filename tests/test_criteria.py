@@ -2,17 +2,24 @@ import urllib.parse
 
 from mock import MagicMock
 
-from icap import RegexCriteria, DomainCriteria, handler, ContentTypeCriteria
+from icap import RegexCriteria, DomainCriteria, handler, ContentTypeCriteria, MethodCriteria, HeaderCriteria, HeadersDict
 from icap.criteria import _HANDLERS, sort_handlers, get_handler
 
 
 class FakeRequest(object):
-    def __init__(self, url):
+    def __init__(self, url, method='GET', headers=()):
+        headers = dict(headers)
         self.session = {
             'url': urllib.parse.urlparse(url),
         }
         self.http = MagicMock()
-        self.http.headers.get.return_value = self.session['url'].netloc
+        self.http.request_line.method = method
+        self.http.headers = HeadersDict([
+            ('Host', self.session['url'].netloc),
+        ])
+
+        for key, value in headers.items():
+            self.http.headers[key] = value
 
         self.is_reqmod = True
 
@@ -90,7 +97,7 @@ class TestContentTypeCriteria:
         f.is_reqmod = False
         r = ContentTypeCriteria('text/html')
 
-        f.http.headers.get.return_value = 'text/html'
+        f.http.headers['Content-Type'] = 'text/html'
 
         assert r(f)
 
@@ -127,6 +134,25 @@ def test_sort_handlers():
 
     assert isinstance(first[0], RegexCriteria)
     assert isinstance(second[0], DomainCriteria)
+
+
+def test_MethodCriteria():
+    c = MethodCriteria('POST', 'GET')
+
+    assert c(FakeRequest('foo', method='POST'))
+    assert c(FakeRequest('foo', method='GET'))
+    assert not c(FakeRequest('foo', method='PUT'))
+
+
+def test_HeaderCriteria():
+    a = HeaderCriteria('X-Forwarded-For')
+    b = HeaderCriteria('X-Forwarded-For', 'blah')
+
+    assert a(FakeRequest('foo', headers={'X-Forwarded-For': 'blah'}))
+    assert not a(FakeRequest('foo'))
+
+    assert b(FakeRequest('foo', headers={'X-Forwarded-For': 'blah'}))
+    assert not b(FakeRequest('foo', headers={'X-Forwarded-For': 'blup'}))
 
 
 class TestHandlers:

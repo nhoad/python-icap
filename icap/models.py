@@ -474,6 +474,12 @@ class HTTPResponse(HTTPMessage):
         super(HTTPResponse, self).__init__(*args, **kwargs)
         self.status_line = status_line or StatusLine('HTTP/1.1', 200, 'OK')
 
+        # if a RESPMOD comes in such that the request headers are available,
+        # these will be replaced with those. These are merely provided as
+        # defaults to protect against AttributeErrors.
+        self.request_line = RequestLine('GET', '/', 'HTTP/1.1')
+        self.request_headers = HeadersDict()
+
     @classmethod
     def from_parser(cls, parser):
         """Return an instance of `~icap.models.HTTPResponse` from ``parser``.
