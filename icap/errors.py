@@ -76,7 +76,7 @@ class ICAPAbort(Exception):
             message = "'%d %s' was raised" % (
                 status_code, icap_response_codes[status_code])
 
-        super(ICAPAbort, self).__init__(message)
+        super().__init__(message)
         self.status_code = status_code
 
 
@@ -96,7 +96,7 @@ class InvalidEncapsulatedHeadersError(Exception):
 
         message = ("Encapsulated field does not comply with RFC3507: %s"
                    % raw_field)
-        super(InvalidEncapsulatedHeadersError, self).__init__(message)
+        super().__init__(message)
 
 
 class MalformedRequestError(Exception):
