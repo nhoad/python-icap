@@ -97,7 +97,7 @@ class ChunkedMessageParser(object):
         while not self.headers_complete():
             line = stream.readline()
             if not self.feed_line(line):
-                raise MalformedRequestError()
+                raise MalformedRequestError('Line not valid: %r' % line)
 
         s = stream.read()
         if s:
@@ -352,13 +352,13 @@ def parse_start_line(sline):
     try:
         method, uri, version = parts = sline.split(' ', 2)
     except ValueError:
-        raise MalformedRequestError
+        raise MalformedRequestError('Malformed start line: %r' % sline)
 
     if method.upper().startswith(('HTTP', 'ICAP')):
         version, code, reason = parts
         try:
             return StatusLine(version.upper(), code, reason)
         except ValueError:
-            raise MalformedRequestError
+            raise MalformedRequestError('Malformed status line: %r' % sline)
     else:
         return RequestLine(method.upper(), uri, version.upper())
