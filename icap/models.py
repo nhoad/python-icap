@@ -45,7 +45,7 @@ class RequestLine(namedtuple('RequestLine', 'method uri version')):
     def __new__(self, method, uri, version):
         uri = urlparse(uri)
         uri = uri._replace(query=parse_qs(uri.query))
-        return super(RequestLine, self).__new__(self, method, uri, version)
+        return super().__new__(self, method, uri, version)
 
     def __bytes__(self):
         method, uri, version = self
@@ -97,7 +97,7 @@ class StatusLine(namedtuple('StatusLine', 'version code reason')):
         else:
             reason = icap_response_codes[code]
 
-        return super(StatusLine, self).__new__(self, version, code, reason)
+        return super().__new__(self, version, code, reason)
 
     def __bytes__(self):
         return ' '.join(map(str, self)).encode('utf8')
@@ -247,7 +247,7 @@ class ICAPRequest(ICAPMessage):
         For all other available attributes, see `~icap.models.ICAPMessage`.
 
         """
-        super(ICAPRequest, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.request_line = request_line or RequestLine("UNKNOWN", "/", "ICAP/1.0")
 
     @classmethod
@@ -305,7 +305,7 @@ class ICAPResponse(ICAPMessage):
         For all other available attributes, see `~icap.models.ICAPMessage`.
 
         """
-        super(ICAPResponse, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.status_line = status_line or StatusLine('ICAP/1.0', 200, 'OK')
 
     def __bytes__(self):
@@ -455,7 +455,7 @@ class HTTPRequest(HTTPMessage):
 
         """
         self.request_line = request_line or RequestLine('GET', '/', 'HTTP/1.1')
-        super(HTTPRequest, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     @classmethod
     def from_parser(cls, parser):
@@ -505,7 +505,7 @@ class HTTPResponse(HTTPMessage):
         For all other available attributes, see `~icap.models.HTTPMessage`.
 
         """
-        super(HTTPResponse, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.status_line = status_line or StatusLine('HTTP/1.1', 200, 'OK')
 
         # if a RESPMOD comes in such that the request headers are available,
