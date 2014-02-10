@@ -21,3 +21,6 @@ TODO:
     - Allow for particularly horrible yet perfectly valid HTTP.
     - SSL
     - Replace assertions with proper exceptions.
+    - some operations need to run in threads/processes to prevent blocking the
+      proactor (e.g. gzip encoding/decoding). Providing a nice wrapper
+      interface on asyncio's process/thread deferral code would be good.
