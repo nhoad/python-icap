@@ -2,7 +2,9 @@ PYTHON:=/usr/bin/python3
 PYTEST:=`which py.test`
 COVERAGE_RUN:=`which coverage3` run --append
 
-run-tests: clean-coverage unit-tests service-tests
+run-tests: clean-coverage unit-tests service-tests coverage
+
+coverage:
 	coverage html --include="icap/*"
 	coverage report --include="icap/*"
 
