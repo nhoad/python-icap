@@ -26,6 +26,11 @@ def benchmark_ICAP_parsing(request):
     ICAPRequestParser.from_bytes(request)
 
 
+@benchmark(800, 0.0006, request=open('data/reddit.com.request', 'rb').read())
+def benchmark_ICAP_parsing(request):
+    ICAPRequestParser.from_bytes(request)
+
+
 @benchmark(6000, 0.0002, request=open('data/http_request_with_payload.request', 'rb').read())
 def benchmark_HTTP_parsing(request):
     HTTPMessageParser.from_bytes(request)
