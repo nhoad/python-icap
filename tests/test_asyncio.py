@@ -227,6 +227,24 @@ class TestICAPProtocol:
         assert b'Date: ' in s
         assert b'Encapsulated: ' in s
 
+    def test_handle_request__options_request_handler_with_http_specific_handler(self):
+        input_bytes = data_string('options_request.request')
+
+        server = ICAPProtocolFactory()
+
+        @handler(DomainCriteria('google.com'))
+        def respmod(request):
+            pass
+
+        s = self.run_test(server, input_bytes)
+
+        print(s)
+
+        assert b'ICAP/1.0 200 OK' in s
+        assert b'ISTag: ' in s
+        assert b'Date: ' in s
+        assert b'Encapsulated: ' in s
+
     def test_handle_request__options_request(self):
         input_bytes = data_string('options_request.request')
         server = self.dummy_server()

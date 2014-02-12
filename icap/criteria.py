@@ -234,6 +234,9 @@ def get_handler(request):
         # so I've decided to make the 404 response mandatory.
         abort(404)
 
+    if request.is_options:
+        return None, True
+
     for criteria, handler, raw in services:
         if criteria(request):
             return handler, raw
