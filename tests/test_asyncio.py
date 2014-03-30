@@ -4,7 +4,7 @@ from io import BytesIO
 
 import pytest
 
-from mock import MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from icap import (DomainCriteria, HTTPResponse, HeadersDict, HTTPRequest,
                   handler, ICAPProtocolFactory, ICAPProtocol, RequestLine, hooks)

@@ -1,7 +1,7 @@
 import signal
 import pytest
 
-from mock import MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from icap import hooks
 from icap.server import is_tag, _fallback_is_tag, stop, run, signal_handlers

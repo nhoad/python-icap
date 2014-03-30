@@ -1,6 +1,6 @@
 import pytest
 
-from mock import MagicMock, call
+from unittest.mock import MagicMock, call
 
 from icap import ICAPResponse, HTTPResponse, HeadersDict
 from icap.serialization import (

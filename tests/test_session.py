@@ -1,6 +1,6 @@
 import asyncio
 
-from mock import patch, MagicMock
+from unittest.mock import patch, MagicMock
 
 from icap import ICAPRequest, HeadersDict, handler
 from icap.session import make_session_id, should_finalize_session, get_session, SessionStorage

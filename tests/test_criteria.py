@@ -1,6 +1,6 @@
 import urllib.parse
 
-from mock import MagicMock
+from unittest.mock import MagicMock
 
 from icap import (
     RegexCriteria, DomainCriteria, handler, ContentTypeCriteria,
