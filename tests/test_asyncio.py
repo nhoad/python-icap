@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 from io import BytesIO
 
@@ -200,7 +201,10 @@ class TestICAPProtocol:
 
         transaction = protocol.transport.getvalue()
 
-        print(transaction.decode('utf8'))
+        try:
+            print(transaction.decode('utf8'))
+        except UnicodeDecodeError:
+            print(transaction)
 
         assert transaction.count(b'Date: ') <= 2
         assert transaction.count(b'Encapsulated: ') == 1
@@ -318,6 +322,46 @@ class TestICAPProtocol:
         transaction = self.run_test(server, input_bytes)
 
         assert b"cool body" in transaction
+        assert b"Content-Length" in transaction
+
+    def test_handle_request__no_content_length_on_zero_length_body(self):
+        input_bytes = data_string('request_with_http_request_no_payload.request')
+
+        server = ICAPProtocolFactory()
+
+        @handler(DomainCriteria('www.origin-server.com'))
+        def reqmod(request):
+            return HTTPRequest(body=b'', headers=request.headers)
+
+        transaction = self.run_test(server, input_bytes)
+
+        assert b"Content-Length" not in transaction
+
+    def test_handle_request__no_mod_has_no_content_length_on_zero_length_body(self):
+        input_bytes = data_string('request_with_http_request_no_payload.request')
+
+        server = ICAPProtocolFactory()
+
+        @handler(DomainCriteria('www.origin-server.com'))
+        def reqmod(request):
+            pass
+
+        transaction = self.run_test(server, input_bytes)
+
+        assert b"Content-Length" not in transaction
+
+    def test_handle_request__correct_length_for_binary_data(self):
+        input_bytes = data_string('request_with_http_request_no_payload.request')
+
+        server = ICAPProtocolFactory()
+
+        @handler(DomainCriteria('www.origin-server.com'))
+        def reqmod(request):
+            return os.urandom(16)
+
+        transaction = self.run_test(server, input_bytes)
+
+        assert b"Content-Length: 16\r\n" in transaction
 
     @pytest.mark.parametrize(('force_204'), [False, True])
     def test_handle_request__no_match_204(self, force_204):

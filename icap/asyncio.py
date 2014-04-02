@@ -211,7 +211,12 @@ class ICAPProtocol(asyncio.Protocol):
         http = response
         response = ICAPResponse(http=http)
 
-        http.headers.replace('Content-Length', str(len(http.body_bytes)))
+        l = len(http.body_bytes)
+
+        if l:
+            http.headers.replace('Content-Length', str(l))
+        else:
+            http.headers.pop('Content-Length', None)
         return response
 
     @asyncio.coroutine
