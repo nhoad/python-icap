@@ -3,7 +3,7 @@ from lxml import html
 from icap import run, handler, DomainCriteria, ContentTypeCriteria
 
 
-@handler(DomainCriteria('youtube.com') & ContentTypeCriteria('text/html'))
+@handler(DomainCriteria('twitter.com') & ContentTypeCriteria('text/html'))
 class Twitter:
     def respmod(request):
         doc = html.document_fromstring(request.body)
