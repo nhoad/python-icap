@@ -3,7 +3,10 @@ import functools
 import logging
 import re
 
-from asyncio.tasks import iscoroutine
+try:
+    from asyncio.tasks import iscoroutine
+except ImportError:
+    from asyncio import iscoroutine
 from io import BytesIO, SEEK_END
 
 from .criteria import AlwaysCriteria, get_handler
