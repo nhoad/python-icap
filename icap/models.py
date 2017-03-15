@@ -159,6 +159,9 @@ class HeadersDict(OrderedDict):
         except KeyError:
             return default()
 
+    def pop(self, key, *args, **kwargs):
+        return OrderedDict.pop(self, key.lower(), *args, **kwargs)
+
     def replace(self, key, value):
         """Replace all values at `key` with `value`."""
         lkey = key.lower()
