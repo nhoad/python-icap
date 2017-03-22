@@ -124,7 +124,7 @@ class ContentTypeCriteria(BaseCriteria):
         super().__init__()
         self.content_types = content_types
 
-     def __call__(self, request):
+    def __call__(self, request):
         headers = request.http.headers
         content_type = headers.get('content-type', '').split(';')[0]
 
