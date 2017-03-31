@@ -125,10 +125,8 @@ class ContentTypeCriteria(BaseCriteria):
         self.content_types = content_types
 
     def __call__(self, request):
-        if request.is_reqmod:
-            return False
         headers = request.http.headers
-        content_type = headers.get('content-type', '')
+        content_type = headers.get('content-type', '').split(';')[0]
 
         return content_type in self.content_types
 
